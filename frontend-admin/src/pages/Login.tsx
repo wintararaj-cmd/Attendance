@@ -11,11 +11,13 @@ export default function Login({ onLogin }: { onLogin: (token: string) => void })
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            const formData = new FormData();
-            formData.append('username', username);
-            formData.append('password', password);
+            const params = new URLSearchParams();
+            params.append('username', username);
+            params.append('password', password);
 
-            const res = await axios.post('/api/v1/auth/login', formData);
+            const res = await axios.post('/api/v1/auth/login', params, {
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+            });
             if (res.data.access_token) {
                 onLogin(res.data.access_token);
             }
