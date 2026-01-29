@@ -25,7 +25,41 @@ from jose import JWTError, jwt
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
-# ... (skip lines) ...
+# ... (skip lines) replaced with actual functions
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+        
+    user = db.query(AdminUser).filter(AdminUser.username == username).first()
+    if user is None:
+        raise credentials_exception
+    return user
+
+@router.get("/debug/init-db")
+def init_db(db: Session = Depends(get_db)):
+    try:
+        models.Base.metadata.create_all(bind=engine)
+        
+        # Create Default Company if not exists
+        from ..models.models import Company
+        default_company = db.query(Company).filter(Company.id == "default").first()
+        if not default_company:
+            db.add(Company(id="default", name="Default Company", address="HQ"))
+            db.commit()
+            
+        return {"status": "success", "message": "Tables created and Default Company initialized"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @router.post("/auth/login")
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
