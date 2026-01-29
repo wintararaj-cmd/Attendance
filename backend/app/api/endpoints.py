@@ -54,7 +54,7 @@ def init_db(db: Session = Depends(get_db)):
         from ..models.models import Company
         default_company = db.query(Company).filter(Company.id == "default").first()
         if not default_company:
-            db.add(Company(id="default", name="Default Company", address="HQ"))
+            db.add(Company(id="default", name="Default Company"))
             db.commit()
             
         return {"status": "success", "message": "Tables created and Default Company initialized"}
