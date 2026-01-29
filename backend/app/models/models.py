@@ -23,6 +23,14 @@ class Models(Base):
     __abstract__ = True
     # Helper for mixins if needed
 
+class AdminUser(Base):
+    __tablename__ = "admin_users"
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    username = Column(String, unique=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+    role = Column(String, default="admin") # superadmin, hr, etc.
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
 class Company(Base):
     __tablename__ = "companies"
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -63,8 +71,17 @@ class AttendanceLog(Base):
 
 class SalaryStructure(Base):
     __tablename__ = "salary_structures"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String)
-    basic_salary = Column(Numeric(12, 2))
-    hra_percentage = Column(Numeric(5, 2))
-    # ... Add other fields as per schema
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    employee_id = Column(String, ForeignKey("employees.id"), unique=True)
+    
+    basic_salary = Column(Numeric(12, 2), default=0.0)
+    hra_allowance = Column(Numeric(12, 2), default=0.0)
+    special_allowance = Column(Numeric(12, 2), default=0.0)
+    
+    pf_deduction = Column(Numeric(12, 2), default=0.0)
+    professional_tax = Column(Numeric(12, 2), default=0.0)
+    
+    employee = relationship("Employee", back_populates="salary_structure")
+
+# Update Employee relationship
+Employee.salary_structure = relationship("SalaryStructure", uselist=False, back_populates="employee")

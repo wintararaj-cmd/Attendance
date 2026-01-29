@@ -1,4 +1,5 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends, Body
+from fastapi.responses import FileResponse
 from typing import Optional, List
 from sqlalchemy.orm import Session
 import shutil
@@ -6,12 +7,76 @@ import os
 import json
 import uuid
 import datetime
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+
 from ..services.face_recognition import face_service
 from ..services.payroll import payroll_service
+from ..services.auth import auth_service, SECRET_KEY, ALGORITHM
 from ..core.database import get_db
-from ..models.models import Employee, AttendanceLog
+from ..models.models import Employee, AttendanceLog, SalaryStructure, AdminUser
+from jose import JWTError, jwt
 
 router = APIRouter()
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+        
+    user = db.query(AdminUser).filter(AdminUser.username == username).first()
+    if user is None:
+        raise credentials_exception
+    return user
+
+@router.post("/auth/login")
+async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = db.query(AdminUser).filter(AdminUser.username == form_data.username).first()
+    if not user or not auth_service.verify_password(form_data.password, user.password_hash):
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    access_token_expires = datetime.timedelta(minutes=auth_service.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = auth_service.create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@router.post("/auth/create-super-admin")
+def create_super_admin(
+    username: str = Body(...), 
+    password: str = Body(...),
+    secret: str = Body(...), # Simple security check
+    db: Session = Depends(get_db)
+):
+    if secret != "setup-secret-123":
+        raise HTTPException(status_code=403, detail="Invalid setup secret")
+        
+    existing = db.query(AdminUser).filter(AdminUser.username == username).first()
+    if existing:
+         raise HTTPException(status_code=400, detail="User already exists")
+         
+    hashed_pw = auth_service.get_password_hash(password)
+    new_admin = AdminUser(username=username, password_hash=hashed_pw, role="superadmin")
+    db.add(new_admin)
+    db.commit()
+    
+    return {"status": "success", "message": "Super Admin created"}
 
 @router.post("/attendance/register")
 async def register_face(
@@ -215,13 +280,27 @@ def get_employee_payroll(
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
         
-    # Mock Salary Structure (In real app, fetch from DB)
-    salary_struct = {
-        "basic_salary": 25000, 
-        "hra_percentage": 40, 
-        "da_percentage": 10,
-        "special_allowance": 5000
-    }
+    # Fetch Salary Structure
+    sal = db.query(SalaryStructure).filter(SalaryStructure.employee_id == emp_id).first()
+    
+    if not sal:
+        # Default fallback
+        salary_struct = {
+            "basic_salary": 15000, 
+            "hra_percentage": 0, 
+            "da_percentage": 0,
+            "special_allowance": 0,
+            "pf_deduction": 0,
+            "professional_tax": 0
+        }
+    else:
+        salary_struct = {
+            "basic_salary": float(sal.basic_salary),
+            "hra_allowance": float(sal.hra_allowance),
+            "special_allowance": float(sal.special_allowance),
+            "pf_deduction": float(sal.pf_deduction),
+            "professional_tax": float(sal.professional_tax)
+        }
     
     # Calculate Attendance for Current Month
     today = datetime.date.today()
@@ -235,7 +314,6 @@ def get_employee_payroll(
     ).count()
     
     # Simple Logic: Assume 30 day month. Unpaid = 30 - Present.
-    # In production, check holidays, weekends, etc.
     attendance = {
         "total_working_days": 30,
         "unpaid_leaves": max(0, 30 - present_days),
@@ -270,3 +348,155 @@ def get_attendance_logs(db: Session = Depends(get_db)):
             "confidence": float(log.confidence_score) if log.confidence_score else None
         })
     return result
+
+@router.get("/employees/{emp_id}/salary")
+def get_employee_salary_struct(emp_id: str, db: Session = Depends(get_db)):
+    sal = db.query(SalaryStructure).filter(SalaryStructure.employee_id == emp_id).first()
+    if not sal:
+        return {
+            "basic_salary": 0,
+            "hra_allowance": 0,
+            "special_allowance": 0,
+            "pf_deduction": 0,
+            "professional_tax": 0
+        }
+    return sal
+
+@router.post("/employees/{emp_id}/salary")
+def update_employee_salary(
+    emp_id: str, 
+    data: dict = Body(...),
+    db: Session = Depends(get_db)
+):
+    sal = db.query(SalaryStructure).filter(SalaryStructure.employee_id == emp_id).first()
+    if not sal:
+        sal = SalaryStructure(id=str(uuid.uuid4()), employee_id=emp_id)
+        db.add(sal)
+    
+    sal.basic_salary = data.get("basic_salary", 0)
+    sal.hra_allowance = data.get("hra_allowance", 0)
+    sal.special_allowance = data.get("special_allowance", 0)
+    sal.pf_deduction = data.get("pf_deduction", 0)
+    sal.professional_tax = data.get("professional_tax", 0)
+    
+    db.commit()
+    return {"status": "success", "message": "Salary structure updated"}
+
+@router.get("/payroll/payslip/{emp_id}/pdf")
+def download_payslip_pdf(emp_id: str, db: Session = Depends(get_db)):
+    emp = db.query(Employee).filter(Employee.id == emp_id).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+        
+    # Get Payroll Data logic (reused from get_employee_payroll, ideally refactor)
+    sal = db.query(SalaryStructure).filter(SalaryStructure.employee_id == emp_id).first()
+    
+    # Defaults
+    basic = float(sal.basic_salary) if sal else 15000
+    hra = float(sal.hra_allowance) if sal else 0
+    special = float(sal.special_allowance) if sal else 0
+    pf = float(sal.pf_deduction) if sal else 0
+    pt = float(sal.professional_tax) if sal else 0
+    
+    today = datetime.date.today()
+    start_date = today.replace(day=1)
+    present_days = db.query(AttendanceLog).filter(
+        AttendanceLog.employee_id == emp_id,
+        AttendanceLog.date >= start_date,
+        AttendanceLog.status == "present"
+    ).count()
+    
+    attendance = {
+        "total_working_days": 30,
+        "unpaid_leaves": max(0, 30 - present_days),
+        "overtime_hours": 0
+    }
+    
+    salary_struct = {
+        "basic_salary": basic, "hra_allowance": hra, "special_allowance": special, 
+        "pf_deduction": pf, "professional_tax": pt
+    }
+    
+    net_data = payroll_service.calculate_net_salary(salary_struct, attendance)
+    
+    # --- Generate PDF ---
+    filename = f"Payslip_{emp.first_name}_{today.strftime('%b_%Y')}.pdf"
+    filepath = f"temp_{filename}"
+    
+    c = canvas.Canvas(filepath, pagesize=A4)
+    width, height = A4
+    
+    # Header
+    c.setFont("Helvetica-Bold", 20)
+    c.drawString(50, height - 50, f"PAYSLIP - {today.strftime('%B %Y')}")
+    
+    c.setFont("Helvetica", 12)
+    c.drawString(50, height - 80, f"Employee: {emp.first_name} {emp.last_name or ''}")
+    c.drawString(50, height - 100, f"Employee ID: {emp.emp_code}")
+    
+    # Attendance
+    c.drawString(50, height - 140, f"Present Days: {present_days}")
+    c.drawString(200, height - 140, f"Total Days: 30")
+    
+    # Table Header
+    y = height - 180
+    c.setLineWidth(1)
+    c.line(50, y, width - 50, y)
+    y -= 20
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, y, "Earnings")
+    c.drawString(300, y, "Amount")
+    c.drawString(350, y, "Deductions")
+    c.drawString(500, y, "Amount")
+    y -= 10
+    c.line(50, y, width - 50, y)
+    y -= 20
+    
+    # Earnings
+    c.setFont("Helvetica", 11)
+    earnings = net_data["payroll"]["earnings"]
+    deductions = net_data["payroll"]["deductions"]
+    
+    start_y = y
+    
+    c.drawString(50, y, "Basic Salary")
+    c.drawString(300, y, f"{earnings['basic']:.2f}")
+    
+    c.drawString(350, y, "Provident Fund")
+    c.drawString(500, y, f"{deductions['pf']:.2f}")
+    y -= 20
+    
+    c.drawString(50, y, "HRA")
+    c.drawString(300, y, f"{earnings['hra']:.2f}")
+    
+    c.drawString(350, y, "Professional Tax")
+    c.drawString(500, y, f"{deductions['prof_tax']:.2f}")
+    y -= 20
+    
+    c.drawString(50, y, "Allowances")
+    c.drawString(300, y, f"{earnings['special']:.2f}")
+    
+    c.drawString(350, y, "LOP")
+    c.drawString(500, y, f"{deductions['lop']:.2f}")
+    y -= 20
+    
+    # Totals
+    y -= 10
+    c.line(50, y, width - 50, y)
+    y -= 20
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(50, y, "Gross Earnings")
+    c.drawString(300, y, f"{earnings['gross_earned']:.2f}")
+    
+    c.drawString(350, y, "Total Deductions")
+    c.drawString(500, y, f"{deductions['total']:.2f}")
+    
+    # Net Pay
+    y -= 40
+    c.setFillColor(colors.blue)
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(50, y, f"NET PAYABLE: Rs. {net_data['payroll']['net_salary']:.2f}")
+    
+    c.save()
+    
+    return FileResponse(filepath, media_type='application/pdf', filename=filename)
