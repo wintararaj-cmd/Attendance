@@ -3,6 +3,12 @@ import Webcam from 'react-webcam';
 import axios from 'axios';
 import { ScanFace, UserCheck, XCircle, AlertTriangle } from 'lucide-react';
 
+// Configure Axios base URL for production
+const apiUrl = import.meta.env.VITE_API_BASE_URL;
+if (apiUrl) {
+    axios.defaults.baseURL = apiUrl;
+}
+
 export default function App() {
     const webcamRef = useRef<Webcam>(null);
     const [empIdInput, setEmpIdInput] = useState('');
