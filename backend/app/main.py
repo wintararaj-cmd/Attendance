@@ -13,16 +13,9 @@ from .models import models
 models.Base.metadata.create_all(bind=engine)
 
 # CORS Configuration
-origins = [
-    "http://localhost",
-    "http://localhost:3000", # React Admin
-    "http://localhost:5173", # Vite Dev (Admin)
-    "http://localhost:5174", # Vite Dev (Terminal)
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origin_regex="https?://.*", # Allow all http and https origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
