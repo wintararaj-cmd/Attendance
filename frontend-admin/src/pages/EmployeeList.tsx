@@ -66,7 +66,7 @@ export default function EmployeeList() {
                                     </td>
                                 </tr>
                             ) : (
-                                employees?.map(emp => (
+                                (Array.isArray(employees) ? employees : []).map(emp => (
                                     <tr key={emp.id}>
                                         <td>
                                             <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{emp.emp_code}</span>

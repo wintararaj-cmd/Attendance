@@ -106,7 +106,7 @@ export default function DashboardHome() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {s.recent_activity?.map((log) => (
+                                {(Array.isArray(s.recent_activity) ? s.recent_activity : []).map((log) => (
                                     <tr key={log.id}>
                                         <td style={{ fontWeight: 500 }}>{log.employee_name}</td>
                                         <td>{log.time}</td>
