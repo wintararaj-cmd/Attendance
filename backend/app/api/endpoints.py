@@ -22,6 +22,9 @@ from ..models import models
 from ..models.models import Employee, AttendanceLog, SalaryStructure, AdminUser
 from jose import JWTError, jwt
 
+router = APIRouter()
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+
 # ... (skip lines) ...
 
 @router.post("/auth/login")
