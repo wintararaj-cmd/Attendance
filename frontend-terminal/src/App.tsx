@@ -4,7 +4,9 @@ import axios from 'axios';
 import { ScanFace, UserCheck, XCircle, AlertTriangle } from 'lucide-react';
 
 // Configure Axios base URL for production
-const apiUrl = import.meta.env.VITE_API_BASE_URL;
+const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://backend.140.245.242.116.sslip.io';
+console.log("Terminal Configured API URL:", apiUrl);
+
 if (apiUrl) {
     axios.defaults.baseURL = apiUrl;
 }
