@@ -91,7 +91,7 @@ export default function DashboardHome() {
                     <h3 style={{ margin: 0 }}>Recent Activity</h3>
                 </div>
 
-                {s.recent_activity.length === 0 ? (
+                {(s.recent_activity?.length || 0) === 0 ? (
                     <div style={{ color: 'var(--text-muted)', padding: '1rem', background: '#f9fafb', borderRadius: '8px', textAlign: 'center' }}>
                         No attendance logs today yet.
                     </div>
@@ -106,7 +106,7 @@ export default function DashboardHome() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {s.recent_activity.map((log) => (
+                                {s.recent_activity?.map((log) => (
                                     <tr key={log.id}>
                                         <td style={{ fontWeight: 500 }}>{log.employee_name}</td>
                                         <td>{log.time}</td>

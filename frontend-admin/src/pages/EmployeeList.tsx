@@ -59,14 +59,14 @@ export default function EmployeeList() {
                             </tr>
                         </thead>
                         <tbody>
-                            {employees.length === 0 ? (
+                            {(employees?.length || 0) === 0 ? (
                                 <tr>
                                     <td colSpan={4} style={{ textAlign: 'center', padding: '2rem' }}>
                                         <div style={{ color: 'var(--text-muted)' }}>No employees found</div>
                                     </td>
                                 </tr>
                             ) : (
-                                employees.map(emp => (
+                                employees?.map(emp => (
                                     <tr key={emp.id}>
                                         <td>
                                             <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{emp.emp_code}</span>
