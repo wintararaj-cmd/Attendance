@@ -41,6 +41,14 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise credentials_exception
     return user
 
+@router.get("/debug/init-db")
+def init_db(db: Session = Depends(get_db)):
+    try:
+        models.Base.metadata.create_all(bind=engine)
+        return {"status": "success", "message": "Tables created successfully"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 @router.post("/auth/login")
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(AdminUser).filter(AdminUser.username == form_data.username).first()
