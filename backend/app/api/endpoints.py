@@ -15,7 +15,8 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from ..services.face_recognition import face_service
 from ..services.payroll import payroll_service
 from ..services.auth import auth_service, SECRET_KEY, ALGORITHM
-from ..core.database import get_db
+from ..core.database import get_db, engine
+from ..models import models
 from ..models.models import Employee, AttendanceLog, SalaryStructure, AdminUser
 from jose import JWTError, jwt
 
