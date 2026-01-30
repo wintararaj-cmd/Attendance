@@ -24,7 +24,8 @@ export default function AttendanceLogs() {
     const fetchLogs = async () => {
         try {
             const res = await axios.get('/api/v1/attendance/logs');
-            setLogs(res.data);
+            // Backend returns { logs: [...] }
+            setLogs(res.data.logs || []);
         } catch (err) {
             console.error("Failed to fetch logs", err);
         } finally {
@@ -32,12 +33,14 @@ export default function AttendanceLogs() {
         }
     };
 
-    const formatTime = (isoString: string | null) => {
-        if (!isoString) return '--:--';
-        return new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const formatTime = (timeStr: string | null) => {
+        // Backend now returns formatted string "HH:MM AM/PM"
+        if (!timeStr) return '--:--';
+        return timeStr;
     };
 
     const formatDate = (isoString: string) => {
+        if (!isoString) return '';
         return new Date(isoString).toLocaleDateString([], { day: '2-digit', month: 'short', year: 'numeric' });
     };
 
