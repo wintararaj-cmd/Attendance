@@ -1,0 +1,7 @@
+frontend-admin/
+frontend-terminal/
+docs/
+*.md
+*.bat
+*.ppk
+.git/
