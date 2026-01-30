@@ -321,9 +321,16 @@ async def mark_attendance(
                 AttendanceLog.date == today
             ).first()
             
+            
             if existing_log:
                 # Convert check_in time to IST for display
-                check_in_ist = existing_log.check_in.replace(tzinfo=timezone.utc).astimezone(IST)
+                if existing_log.check_in.tzinfo is None:
+                    # If timezone-naive, assume it's UTC
+                    check_in_ist = existing_log.check_in.replace(tzinfo=timezone.utc).astimezone(IST)
+                else:
+                    # If timezone-aware, convert to IST
+                    check_in_ist = existing_log.check_in.astimezone(IST)
+                    
                 print(f"⚠️ Attendance already marked for {matched_emp.emp_code} today at {check_in_ist}")
                 return {
                     "status": "failed",
@@ -398,9 +405,22 @@ def get_attendance_logs(
     result = []
     for log in logs:
         emp = log.employee
-        # Convert times to IST
-        check_in_ist = log.check_in.replace(tzinfo=timezone.utc).astimezone(IST) if log.check_in else None
-        check_out_ist = log.check_out.replace(tzinfo=timezone.utc).astimezone(IST) if log.check_out else None
+        # Convert times to IST - handle both timezone-aware and naive datetimes
+        if log.check_in:
+            if log.check_in.tzinfo is None:
+                check_in_ist = log.check_in.replace(tzinfo=timezone.utc).astimezone(IST)
+            else:
+                check_in_ist = log.check_in.astimezone(IST)
+        else:
+            check_in_ist = None
+            
+        if log.check_out:
+            if log.check_out.tzinfo is None:
+                check_out_ist = log.check_out.replace(tzinfo=timezone.utc).astimezone(IST)
+            else:
+                check_out_ist = log.check_out.astimezone(IST)
+        else:
+            check_out_ist = None
         
         result.append({
             "id": log.id,
@@ -486,12 +506,17 @@ async def mark_checkout(
                     "reason": "No check-in found for today. Please check-in first."
                 }
             
+            
             if existing_log.check_out:
-                check_out_ist = existing_log.check_out.replace(tzinfo=timezone.utc).astimezone(IST)
+                if existing_log.check_out.tzinfo is None:
+                    check_out_ist = existing_log.check_out.replace(tzinfo=timezone.utc).astimezone(IST)
+                else:
+                    check_out_ist = existing_log.check_out.astimezone(IST)
                 return {
                     "status": "failed",
                     "reason": f"Already checked out today at {check_out_ist.strftime('%I:%M %p')}"
                 }
+            
             
             # Mark check-out
             existing_log.check_out = now_ist
