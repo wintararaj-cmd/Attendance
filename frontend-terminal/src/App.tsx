@@ -18,6 +18,7 @@ export default function App() {
     const [result, setResult] = useState<any>(null);
     const [currentTime, setCurrentTime] = useState(new Date());
     const [camError, setCamError] = useState<string | null>(null);
+    const [mode, setMode] = useState<'check-in' | 'check-out'>('check-in');
 
     // Update clock
     useEffect(() => {
@@ -47,7 +48,8 @@ export default function App() {
         formData.append('file', file);
 
         try {
-            const response = await axios.post('/api/v1/attendance/mark', formData);
+            const endpoint = mode === 'check-in' ? '/api/v1/attendance/mark' : '/api/v1/attendance/checkout';
+            const response = await axios.post(endpoint, formData);
             if (response.data.status === 'success') {
                 setResult(response.data);
                 setStatus('success');
@@ -88,7 +90,7 @@ export default function App() {
 
         await verifyFile(file);
 
-    }, [webcamRef, empIdInput, camError]);
+    }, [webcamRef, empIdInput, camError, mode]);
 
     return (
         <div className="terminal-container">
@@ -99,8 +101,44 @@ export default function App() {
             <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Attendance Terminal</h1>
             <p style={{ opacity: 0.6, marginBottom: '2rem' }}>Look directly at the camera</p>
 
+            {/* Mode Switcher */}
+            <div style={{ display: 'flex', gap: '0', background: '#334155', borderRadius: '12px', padding: '4px', marginBottom: '1.5rem', width: '100%', maxWidth: '300px' }}>
+                <button
+                    onClick={() => setMode('check-in')}
+                    style={{
+                        flex: 1,
+                        padding: '10px',
+                        background: mode === 'check-in' ? '#3b82f6' : 'transparent',
+                        color: mode === 'check-in' ? 'white' : '#94a3b8',
+                        border: 'none',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        fontWeight: '600',
+                        transition: 'all 0.2s'
+                    }}
+                >
+                    Check In
+                </button>
+                <button
+                    onClick={() => setMode('check-out')}
+                    style={{
+                        flex: 1,
+                        padding: '10px',
+                        background: mode === 'check-out' ? '#ef4444' : 'transparent',
+                        color: mode === 'check-out' ? 'white' : '#94a3b8',
+                        border: 'none',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        fontWeight: '600',
+                        transition: 'all 0.2s'
+                    }}
+                >
+                    Check Out
+                </button>
+            </div>
+
             {/* Camera View */}
-            <div className="camera-frame">
+            <div className={`camera-frame ${mode === 'check-out' ? 'checkout-mode' : ''}`} style={{ borderColor: mode === 'check-out' ? '#ef4444' : '#3b82f6' }}>
                 {!camError ? (
                     <Webcam
                         audio={false}
@@ -153,7 +191,7 @@ export default function App() {
 
                 {status === 'processing' && (
                     <div className="camera-overlay">
-                        <div className="scan-line"></div>
+                        <div className="scan-line" style={{ background: `linear-gradient(to bottom, transparent, ${mode === 'check-out' ? '#ef4444' : '#3b82f6'}, transparent)` }}></div>
                         <div style={{ marginTop: '1rem', fontWeight: 600 }}>
                             {empIdInput ? 'Verifying ID...' : 'Identifying Face...'}
                         </div>
@@ -163,7 +201,13 @@ export default function App() {
                 {status === 'success' && (
                     <div className="camera-overlay" style={{ background: 'rgba(34, 197, 94, 0.9)', color: 'white', flexDirection: 'column' }}>
                         <UserCheck size={64} />
-                        <h2>Verified</h2>
+                        <h2>{mode === 'check-in' ? 'Checked In' : 'Checked Out'}</h2>
+                        <div style={{ fontSize: '1.5rem', marginTop: '0.5rem' }}>
+                            {result?.time}
+                        </div>
+                        <div style={{ fontSize: '1.2rem', opacity: 0.9 }}>
+                            {result?.employee}
+                        </div>
                     </div>
                 )}
 
@@ -200,10 +244,15 @@ export default function App() {
                     className="btn-large"
                     onClick={captureAndVerify}
                     disabled={status === 'processing' || !!camError}
-                    style={{ justifyContent: 'center', width: '100%', opacity: camError ? 0.5 : 1 }}
+                    style={{
+                        justifyContent: 'center',
+                        width: '100%',
+                        opacity: camError ? 0.5 : 1,
+                        background: mode === 'check-out' ? '#ef4444' : '#3b82f6'
+                    }}
                 >
                     <ScanFace size={24} />
-                    {status === 'processing' ? 'Scanning...' : (empIdInput ? 'Verify ID' : 'Scan Face')}
+                    {status === 'processing' ? 'Scanning...' : (empIdInput ? `Verify & ${mode === 'check-in' ? 'Check In' : 'Check Out'}` : mode === 'check-in' ? 'Check In' : 'Check Out')}
                 </button>
             </div>
         </div>
