@@ -1,7 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Save } from 'lucide-react';
+
+interface Department {
+    id: string;
+    name: string;
+}
 
 export default function RegisterEmployee() {
     const [formData, setFormData] = useState({
@@ -18,6 +23,14 @@ export default function RegisterEmployee() {
     const [file, setFile] = useState<File | null>(null);
     const [status, setStatus] = useState<{ type: 'success' | 'error' | '', msg: string }>({ type: '', msg: '' });
     const [loading, setLoading] = useState(false);
+    const [departments, setDepartments] = useState<Department[]>([]);
+
+    useEffect(() => {
+        // Fetch departments
+        axios.get('/api/v1/departments?status=active')
+            .then(res => setDepartments(res.data))
+            .catch(err => console.error('Failed to fetch departments:', err));
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -156,12 +169,15 @@ export default function RegisterEmployee() {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
                         <div className="form-group">
                             <label>Department</label>
-                            <input
-                                type="text"
+                            <select
                                 value={formData.department}
                                 onChange={e => setFormData({ ...formData, department: e.target.value })}
-                                placeholder="e.g. IT, HR, Finance"
-                            />
+                            >
+                                <option value="">Select Department</option>
+                                {departments.map(dept => (
+                                    <option key={dept.id} value={dept.name}>{dept.name}</option>
+                                ))}
+                            </select>
                         </div>
 
                         <div className="form-group">

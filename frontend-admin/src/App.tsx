@@ -6,6 +6,7 @@ import RegisterEmployee from './pages/RegisterEmployee';
 import EmployeeList from './pages/EmployeeList';
 import PayrollManagement from './pages/PayrollManagement';
 import AttendanceLogs from './pages/AttendanceLogs';
+import DepartmentManagement from './pages/DepartmentManagement';
 import Login from './pages/Login';
 import axios from 'axios';
 
@@ -46,6 +47,7 @@ function App() {
             <Route path="/" element={<DashboardHome />} />
             <Route path="/register" element={<RegisterEmployee />} />
             <Route path="/employees" element={<EmployeeList />} />
+            <Route path="/departments" element={<DepartmentManagement />} />
             <Route path="/payroll" element={<PayrollManagement />} />
             <Route path="/logs" element={<AttendanceLogs />} />
             <Route path="*" element={<Navigate to="/" />} />

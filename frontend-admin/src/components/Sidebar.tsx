@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, UserPlus, Banknote, FileText } from 'lucide-react';
+import { LayoutDashboard, Users, UserPlus, Banknote, FileText, Building2 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 
 export default function Sidebar() {
@@ -24,6 +24,14 @@ export default function Sidebar() {
         >
           <Users size={20} />
           Employees
+        </NavLink>
+
+        <NavLink
+          to="/departments"
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+        >
+          <Building2 size={20} />
+          Departments
         </NavLink>
 
         <NavLink

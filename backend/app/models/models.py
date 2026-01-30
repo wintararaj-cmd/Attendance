@@ -40,6 +40,20 @@ class Company(Base):
     
     employees = relationship("Employee", back_populates="company")
 
+class Department(Base):
+    __tablename__ = "departments"
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    company_id = Column(String, ForeignKey("companies.id"))
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    department_head = Column(String, nullable=True)  # Employee name or ID
+    status = Column(String, default="active")  # 'active', 'inactive'
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    company = relationship("Company", backref="departments")
+
+
 class Employee(Base):
     __tablename__ = "employees"
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))

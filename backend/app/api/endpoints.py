@@ -19,7 +19,7 @@ from ..services.payroll import payroll_service
 from ..services.auth import auth_service, SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 from ..core.database import get_db, engine
 from ..models import models
-from ..models.models import Employee, AttendanceLog, SalaryStructure, AdminUser
+from ..models.models import Employee, AttendanceLog, SalaryStructure, AdminUser, Department
 from jose import JWTError, jwt
 
 router = APIRouter()
@@ -827,3 +827,182 @@ def download_payslip_pdf(emp_id: str, db: Session = Depends(get_db)):
     c.save()
     
     return FileResponse(filepath, media_type='application/pdf', filename=filename)
+
+# ==================== DEPARTMENT MANAGEMENT ====================
+
+@router.get("/departments")
+def get_departments(
+    status: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Get all departments with optional status filter"""
+    query = db.query(Department)
+    
+    if status:
+        query = query.filter(Department.status == status)
+    
+    departments = query.all()
+    
+    # Get employee count for each department
+    result = []
+    for dept in departments:
+        employee_count = db.query(Employee).filter(
+            Employee.department == dept.name,
+            Employee.status == 'active'
+        ).count()
+        
+        result.append({
+            "id": dept.id,
+            "name": dept.name,
+            "description": dept.description,
+            "department_head": dept.department_head,
+            "status": dept.status,
+            "employee_count": employee_count,
+            "created_at": dept.created_at.isoformat() if dept.created_at else None,
+            "updated_at": dept.updated_at.isoformat() if dept.updated_at else None
+        })
+    
+    return result
+
+@router.get("/departments/{dept_id}")
+def get_department_by_id(dept_id: str, db: Session = Depends(get_db)):
+    """Get single department details"""
+    dept = db.query(Department).filter(Department.id == dept_id).first()
+    if not dept:
+        raise HTTPException(status_code=404, detail="Department not found")
+    
+    # Get employee count
+    employee_count = db.query(Employee).filter(
+        Employee.department == dept.name,
+        Employee.status == 'active'
+    ).count()
+    
+    return {
+        "id": dept.id,
+        "name": dept.name,
+        "description": dept.description,
+        "department_head": dept.department_head,
+        "status": dept.status,
+        "employee_count": employee_count,
+        "company_id": dept.company_id,
+        "created_at": dept.created_at.isoformat() if dept.created_at else None
+    }
+
+@router.post("/departments")
+def create_department(
+    data: dict = Body(...),
+    db: Session = Depends(get_db)
+):
+    """Create a new department"""
+    # Check if department name already exists
+    existing = db.query(Department).filter(
+        Department.name == data.get('name'),
+        Department.company_id == data.get('company_id', 'default')
+    ).first()
+    
+    if existing:
+        raise HTTPException(status_code=400, detail="Department with this name already exists")
+    
+    new_dept = Department(
+        id=str(uuid.uuid4()),
+        company_id=data.get('company_id', 'default'),
+        name=data.get('name'),
+        description=data.get('description'),
+        department_head=data.get('department_head'),
+        status=data.get('status', 'active')
+    )
+    
+    db.add(new_dept)
+    db.commit()
+    db.refresh(new_dept)
+    
+    return {
+        "status": "success",
+        "message": "Department created successfully",
+        "id": new_dept.id
+    }
+
+@router.put("/departments/{dept_id}")
+def update_department(
+    dept_id: str,
+    data: dict = Body(...),
+    db: Session = Depends(get_db)
+):
+    """Update department details"""
+    dept = db.query(Department).filter(Department.id == dept_id).first()
+    if not dept:
+        raise HTTPException(status_code=404, detail="Department not found")
+    
+    # Update allowed fields
+    if 'name' in data:
+        # Check if new name conflicts with existing department
+        existing = db.query(Department).filter(
+            Department.name == data['name'],
+            Department.id != dept_id,
+            Department.company_id == dept.company_id
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Department name already exists")
+        dept.name = data['name']
+    
+    if 'description' in data:
+        dept.description = data['description']
+    if 'department_head' in data:
+        dept.department_head = data['department_head']
+    if 'status' in data:
+        dept.status = data['status']
+    
+    try:
+        db.commit()
+        db.refresh(dept)
+        return {"status": "success", "message": "Department updated successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/departments/{dept_id}")
+def delete_department(dept_id: str, db: Session = Depends(get_db)):
+    """Delete department (soft delete by setting status to inactive)"""
+    dept = db.query(Department).filter(Department.id == dept_id).first()
+    if not dept:
+        raise HTTPException(status_code=404, detail="Department not found")
+    
+    # Check if department has employees
+    employee_count = db.query(Employee).filter(
+        Employee.department == dept.name,
+        Employee.status == 'active'
+    ).count()
+    
+    if employee_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete department with {employee_count} active employees. Please reassign employees first."
+        )
+    
+    # Soft delete
+    dept.status = "inactive"
+    db.commit()
+    
+    return {"status": "success", "message": "Department deactivated successfully"}
+
+@router.get("/departments/{dept_id}/employees")
+def get_department_employees(dept_id: str, db: Session = Depends(get_db)):
+    """Get all employees in a department"""
+    dept = db.query(Department).filter(Department.id == dept_id).first()
+    if not dept:
+        raise HTTPException(status_code=404, detail="Department not found")
+    
+    employees = db.query(Employee).filter(
+        Employee.department == dept.name,
+        Employee.status == 'active'
+    ).all()
+    
+    return [{
+        "id": emp.id,
+        "emp_code": emp.emp_code,
+        "full_name": f"{emp.first_name} {emp.last_name or ''}".strip(),
+        "designation": emp.designation,
+        "email": emp.email,
+        "mobile_no": emp.mobile_no
+    } for emp in employees]
+
