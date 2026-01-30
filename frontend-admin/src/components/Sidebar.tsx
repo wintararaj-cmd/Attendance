@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, UserPlus, Banknote, FileText, Building2 } from 'lucide-react';
+import { LayoutDashboard, Users, UserPlus, Banknote, FileText, Building2, LogOut } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 
 export default function Sidebar() {
@@ -58,6 +58,29 @@ export default function Sidebar() {
           Attendance Logs
         </NavLink>
       </nav>
+
+      <div style={{ marginTop: 'auto', padding: '1rem' }}>
+        <button
+          onClick={() => {
+            if (confirm('Are you sure you want to logout?')) {
+              localStorage.removeItem('admin_token');
+              window.location.href = '/';
+            }
+          }}
+          className="nav-item"
+          style={{
+            width: '100%',
+            background: 'none',
+            border: 'none',
+            color: '#ef4444',
+            cursor: 'pointer',
+            marginTop: 'auto'
+          }}
+        >
+          <LogOut size={20} />
+          Logout
+        </button>
+      </div>
     </aside>
   );
 }
