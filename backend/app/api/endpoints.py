@@ -61,6 +61,35 @@ def init_db(db: Session = Depends(get_db)):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+@router.get("/debug/check-attendance/{emp_code}")
+def check_attendance_debug(emp_code: str, db: Session = Depends(get_db)):
+    """Debug endpoint to check attendance records for an employee"""
+    emp = db.query(Employee).filter(Employee.emp_code == emp_code).first()
+    if not emp:
+        return {"error": "Employee not found", "emp_code": emp_code}
+    
+    logs = db.query(AttendanceLog).filter(AttendanceLog.employee_id == emp.id).order_by(AttendanceLog.check_in.desc()).limit(10).all()
+    
+    return {
+        "employee": {
+            "id": emp.id,
+            "emp_code": emp.emp_code,
+            "name": f"{emp.first_name} {emp.last_name or ''}",
+            "is_face_registered": emp.is_face_registered
+        },
+        "attendance_count": len(logs),
+        "recent_logs": [
+            {
+                "date": log.date.isoformat(),
+                "check_in": log.check_in.isoformat() if log.check_in else None,
+                "status": log.status,
+                "confidence": float(log.confidence_score) if log.confidence_score else None
+            }
+            for log in logs
+        ]
+    }
+
+
 @router.post("/auth/login")
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(AdminUser).filter(AdminUser.username == form_data.username).first()
@@ -207,25 +236,52 @@ async def mark_attendance(
                  return {"status": "failed", "reason": result.get("reason", "Face not recognized")}
 
         if matched_emp:
-             # Log Attendance
-            log = AttendanceLog(
-                id=str(uuid.uuid4()),
-                employee_id=matched_emp.id,
-                date=datetime.date.today(),
-                check_in=datetime.datetime.now(),
-                status="present",
-                confidence_score=float(confidence)
-            )
-            db.add(log)
-            db.commit()
+            # Check if already marked attendance today
+            today = datetime.date.today()
+            existing_log = db.query(AttendanceLog).filter(
+                AttendanceLog.employee_id == matched_emp.id,
+                AttendanceLog.date == today
+            ).first()
             
-            return {
-                "status": "success",
-                "attended": True,
-                "confidence": confidence,
-                "employee": matched_emp.first_name,
-                "emp_code": matched_emp.emp_code
-            }
+            if existing_log:
+                print(f"⚠️ Attendance already marked for {matched_emp.emp_code} today at {existing_log.check_in}")
+                return {
+                    "status": "failed",
+                    "reason": f"Attendance already marked today at {existing_log.check_in.strftime('%I:%M %p')}"
+                }
+            
+            # Log Attendance
+            try:
+                print(f"✅ Marking attendance for {matched_emp.emp_code} ({matched_emp.first_name})")
+                log = AttendanceLog(
+                    id=str(uuid.uuid4()),
+                    employee_id=matched_emp.id,
+                    date=today,
+                    check_in=datetime.datetime.now(),
+                    status="present",
+                    confidence_score=float(confidence)
+                )
+                db.add(log)
+                db.commit()
+                db.refresh(log)
+                print(f"✅ Attendance logged successfully: ID={log.id}, Time={log.check_in}")
+                
+                return {
+                    "status": "success",
+                    "attended": True,
+                    "confidence": confidence,
+                    "employee": matched_emp.first_name,
+                    "emp_code": matched_emp.emp_code,
+                    "time": log.check_in.strftime('%I:%M %p')
+                }
+            except Exception as db_error:
+                db.rollback()
+                print(f"❌ DATABASE ERROR while marking attendance: {db_error}")
+                return {
+                    "status": "failed",
+                    "reason": f"Database error: {str(db_error)}"
+                }
+        
         
         return {"status": "failed", "reason": "Unknown Error"}
 
