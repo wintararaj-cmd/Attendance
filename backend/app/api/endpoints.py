@@ -89,6 +89,26 @@ def check_attendance_debug(emp_code: str, db: Session = Depends(get_db)):
         ]
     }
 
+@router.get("/debug/list-employees")
+def list_all_employees(db: Session = Depends(get_db)):
+    """Debug endpoint to list all registered employees"""
+    employees = db.query(Employee).all()
+    
+    return {
+        "total_count": len(employees),
+        "employees": [
+            {
+                "id": emp.id,
+                "emp_code": emp.emp_code,
+                "name": f"{emp.first_name} {emp.last_name or ''}",
+                "mobile": emp.mobile_no,
+                "is_face_registered": emp.is_face_registered,
+                "company_id": emp.company_id
+            }
+            for emp in employees
+        ]
+    }
+
 
 @router.post("/auth/login")
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
@@ -157,6 +177,7 @@ async def register_face(
         
         # Create Employee
         # Note: face_service returns a list, we store it as JSON
+        print(f"📝 Creating employee record: {emp_id} - {name}")
         new_emp = Employee(
             id=str(uuid.uuid4()),
             emp_code=emp_id,
@@ -167,13 +188,20 @@ async def register_face(
             company_id="default" # detailed tenant logic later
         )
         db.add(new_emp)
+        print(f"💾 Committing employee {emp_id} to database...")
         db.commit()
         db.refresh(new_emp)
+        print(f"✅ Employee {emp_id} registered successfully! ID: {new_emp.id}")
         
-        return {"status": "success", "message": f"Employee {name} registered with Face ID", "id": new_emp.id}
+        return {"status": "success", "message": f"Employee {name} registered with Face ID", "id": new_emp.id, "emp_code": emp_id}
 
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions as-is
     except Exception as e:
-        print(f"Unhandled endpoint error: {e}")
+        db.rollback()
+        print(f"❌ Registration failed for {emp_id}: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
     finally:
