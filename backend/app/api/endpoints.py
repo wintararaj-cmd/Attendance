@@ -7,6 +7,7 @@ import os
 import json
 import uuid
 import datetime
+from datetime import timezone, timedelta
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
@@ -309,18 +310,24 @@ async def mark_attendance(
                  return {"status": "failed", "reason": result.get("reason", "Face not recognized")}
 
         if matched_emp:
+            # IST timezone
+            IST = timezone(timedelta(hours=5, minutes=30))
+            now_ist = datetime.datetime.now(IST)
+            today = now_ist.date()
+            
             # Check if already marked attendance today
-            today = datetime.date.today()
             existing_log = db.query(AttendanceLog).filter(
                 AttendanceLog.employee_id == matched_emp.id,
                 AttendanceLog.date == today
             ).first()
             
             if existing_log:
-                print(f"⚠️ Attendance already marked for {matched_emp.emp_code} today at {existing_log.check_in}")
+                # Convert check_in time to IST for display
+                check_in_ist = existing_log.check_in.replace(tzinfo=timezone.utc).astimezone(IST)
+                print(f"⚠️ Attendance already marked for {matched_emp.emp_code} today at {check_in_ist}")
                 return {
                     "status": "failed",
-                    "reason": f"Attendance already marked today at {existing_log.check_in.strftime('%I:%M %p')}"
+                    "reason": f"Attendance already marked today at {check_in_ist.strftime('%I:%M %p')}"
                 }
             
             # Log Attendance
@@ -330,7 +337,7 @@ async def mark_attendance(
                     id=str(uuid.uuid4()),
                     employee_id=matched_emp.id,
                     date=today,
-                    check_in=datetime.datetime.now(),
+                    check_in=now_ist,
                     status="present",
                     confidence_score=float(confidence)
                 )
@@ -345,7 +352,7 @@ async def mark_attendance(
                     "confidence": confidence,
                     "employee": matched_emp.first_name,
                     "emp_code": matched_emp.emp_code,
-                    "time": log.check_in.strftime('%I:%M %p')
+                    "time": now_ist.strftime('%I:%M %p')
                 }
             except Exception as db_error:
                 db.rollback()
@@ -358,9 +365,151 @@ async def mark_attendance(
         
         return {"status": "failed", "reason": "Unknown Error"}
 
+
     finally:
         if os.path.exists(temp_file):
             os.remove(temp_file)
+
+@router.get("/attendance/logs")
+def get_attendance_logs(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    employee_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: AdminUser = Depends(get_current_user)
+):
+    """Get attendance logs with optional filters"""
+    from sqlalchemy import desc
+    
+    query = db.query(AttendanceLog).join(Employee)
+    
+    if employee_id:
+        query = query.filter(AttendanceLog.employee_id == employee_id)
+    if start_date:
+        query = query.filter(AttendanceLog.date >= start_date)
+    if end_date:
+        query = query.filter(AttendanceLog.date <= end_date)
+    
+    logs = query.order_by(desc(AttendanceLog.date), desc(AttendanceLog.check_in)).limit(50).all()
+    
+    # IST timezone for display
+    IST = timezone(timedelta(hours=5, minutes=30))
+    
+    result = []
+    for log in logs:
+        emp = log.employee
+        # Convert times to IST
+        check_in_ist = log.check_in.replace(tzinfo=timezone.utc).astimezone(IST) if log.check_in else None
+        check_out_ist = log.check_out.replace(tzinfo=timezone.utc).astimezone(IST) if log.check_out else None
+        
+        result.append({
+            "id": log.id,
+            "date": log.date.isoformat(),
+            "employee_name": f"{emp.first_name} {emp.last_name or ''}".strip(),
+            "emp_code": emp.emp_code,
+            "check_in": check_in_ist.strftime("%I:%M %p") if check_in_ist else None,
+            "check_out": check_out_ist.strftime("%I:%M %p") if check_out_ist else None,
+            "status": log.status,
+            "confidence": float(log.confidence_score) if log.confidence_score else None
+        })
+    
+    return {"logs": result}
+
+@router.post("/attendance/checkout")
+async def mark_checkout(
+    emp_id: Optional[str] = Form(None),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """Mark check-out time for an employee"""
+    temp_file = f"temp_checkout_{file.filename}"
+    try:
+        with open(temp_file, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # Liveness Check
+        if not face_service.verify_liveness(temp_file):
+            return {
+                "status": "failed",
+                "reason": "Liveness check failed. Please blink and ensure good lighting."
+            }
+
+        matched_emp = None
+        confidence = 0.0
+
+        if emp_id:
+            # 1:1 Matching
+            emp = db.query(Employee).filter(Employee.emp_code == emp_id).first()
+            if not emp:
+                raise HTTPException(status_code=404, detail="Employee not found")
+            
+            if not emp.face_encoding_ref:
+                return {"status": "failed", "reason": "No face data registered for this employee"}
+                
+            result = face_service.match_face(temp_file, json.loads(emp.face_encoding_ref))
+            if result["match"]:
+                matched_emp = emp
+                confidence = result["confidence"]
+            else:
+                return {"status": "failed", "reason": result.get("reason", "Face mismatch")}
+        else:
+            # 1:N Search
+            all_employees = db.query(Employee).filter(Employee.is_face_registered == True).all()
+            candidates = {}
+            for e in all_employees:
+                if e.face_encoding_ref:
+                    candidates[e.id] = json.loads(e.face_encoding_ref)
+            
+            result = face_service.identify_face(temp_file, candidates)
+            
+            if result["match"]:
+                matched_emp = db.query(Employee).filter(Employee.id == result["employee_id"]).first()
+                confidence = result["confidence"]
+            else:
+                return {"status": "failed", "reason": result.get("reason", "Face not recognized")}
+
+        if matched_emp:
+            # IST timezone
+            IST = timezone(timedelta(hours=5, minutes=30))
+            now_ist = datetime.datetime.now(IST)
+            today = now_ist.date()
+            
+            # Find today's attendance log
+            existing_log = db.query(AttendanceLog).filter(
+                AttendanceLog.employee_id == matched_emp.id,
+                AttendanceLog.date == today
+            ).first()
+            
+            if not existing_log:
+                return {
+                    "status": "failed",
+                    "reason": "No check-in found for today. Please check-in first."
+                }
+            
+            if existing_log.check_out:
+                check_out_ist = existing_log.check_out.replace(tzinfo=timezone.utc).astimezone(IST)
+                return {
+                    "status": "failed",
+                    "reason": f"Already checked out today at {check_out_ist.strftime('%I:%M %p')}"
+                }
+            
+            # Mark check-out
+            existing_log.check_out = now_ist
+            db.commit()
+            
+            return {
+                "status": "success",
+                "employee": matched_emp.first_name,
+                "emp_code": matched_emp.emp_code,
+                "check_out_time": now_ist.strftime('%I:%M %p')
+            }
+        
+        return {"status": "failed", "reason": "Unknown Error"}
+
+    finally:
+        if os.path.exists(temp_file):
+            os.remove(temp_file)
+
 
 @router.get("/employees")
 def get_employees(
