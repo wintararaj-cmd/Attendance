@@ -109,6 +109,44 @@ def list_all_employees(db: Session = Depends(get_db)):
         ]
     }
 
+@router.get("/debug/db-info")
+def database_info(db: Session = Depends(get_db)):
+    """Debug endpoint to check database connection and info"""
+    import os
+    from sqlalchemy import text
+    
+    db_url = os.getenv("DATABASE_URL", "Not Set")
+    # Hide password for security
+    if db_url and "@" in db_url:
+        parts = db_url.split("@")
+        user_part = parts[0].split("://")[1].split(":")[0]
+        db_url_safe = f"{parts[0].split('://')[0]}://{user_part}:****@{parts[1]}"
+    else:
+        db_url_safe = db_url
+    
+    try:
+        # Test query
+        result = db.execute(text("SELECT COUNT(*) as count FROM employees")).fetchone()
+        employee_count = result[0] if result else 0
+        
+        # Get database name
+        db_name_result = db.execute(text("SELECT current_database()")).fetchone()
+        current_db = db_name_result[0] if db_name_result else "Unknown"
+        
+        return {
+            "status": "connected",
+            "database_url": db_url_safe,
+            "current_database": current_db,
+            "employee_count": employee_count,
+            "connection_type": "PostgreSQL" if "postgresql" in db_url.lower() else "SQLite" if "sqlite" in db_url.lower() else "Unknown"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "database_url": db_url_safe,
+            "error": str(e)
+        }
+
 
 @router.post("/auth/login")
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
