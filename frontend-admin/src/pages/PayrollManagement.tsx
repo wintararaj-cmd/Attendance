@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Calculator, Download, X, Settings } from 'lucide-react';
+import { Calculator, Download, X, Settings, DollarSign, Users, TrendingUp, Filter, Search } from 'lucide-react';
 
 interface Employee {
     id: string;
     emp_code: string;
     first_name: string;
     last_name?: string;
+    department?: string;
+    designation?: string;
+    status: string;
 }
 
 interface PayrollData {
@@ -31,16 +34,28 @@ interface PayrollData {
     };
 }
 
+interface SalaryStructure {
+    basic_salary: number;
+    hra_allowance: number;
+    special_allowance: number;
+    pf_deduction: number;
+    professional_tax: number;
+}
+
 export default function PayrollManagement() {
     const [employees, setEmployees] = useState<Employee[]>([]);
+    const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedPayroll, setSelectedPayroll] = useState<PayrollData | null>(null);
     const [processingId, setProcessingId] = useState<string | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [departmentFilter, setDepartmentFilter] = useState('');
 
     // Config Modal State
     const [showConfigModal, setShowConfigModal] = useState(false);
     const [configEmpId, setConfigEmpId] = useState<string | null>(null);
-    const [salaryForm, setSalaryForm] = useState({
+    const [configEmpName, setConfigEmpName] = useState('');
+    const [salaryForm, setSalaryForm] = useState<SalaryStructure>({
         basic_salary: 0,
         hra_allowance: 0,
         special_allowance: 0,
@@ -48,12 +63,44 @@ export default function PayrollManagement() {
         professional_tax: 0
     });
 
+    // Bulk payroll state
+    const [bulkProcessing, setBulkProcessing] = useState(false);
+
     useEffect(() => {
-        axios.get('/api/v1/employees')
-            .then(res => setEmployees(res.data))
-            .catch(console.error)
-            .finally(() => setLoading(false));
+        fetchEmployees();
     }, []);
+
+    useEffect(() => {
+        filterEmployees();
+    }, [employees, searchTerm, departmentFilter]);
+
+    const fetchEmployees = async () => {
+        try {
+            const res = await axios.get('/api/v1/employees?status=active');
+            setEmployees(res.data);
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const filterEmployees = () => {
+        let filtered = employees;
+
+        if (searchTerm) {
+            filtered = filtered.filter(emp =>
+                `${emp.first_name} ${emp.last_name || ''}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                emp.emp_code.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+        }
+
+        if (departmentFilter) {
+            filtered = filtered.filter(emp => emp.department === departmentFilter);
+        }
+
+        setFilteredEmployees(filtered);
+    };
 
     const handleRunPayroll = async (empId: string) => {
         setProcessingId(empId);
@@ -67,14 +114,24 @@ export default function PayrollManagement() {
         }
     };
 
-    const handleOpenConfig = async (empId: string) => {
+    const handleOpenConfig = async (empId: string, empName: string) => {
         setConfigEmpId(empId);
+        setConfigEmpName(empName);
         try {
             const res = await axios.get(`/api/v1/employees/${empId}/salary`);
             setSalaryForm(res.data);
             setShowConfigModal(true);
         } catch (err) {
             console.error(err);
+            // Set default values if no salary structure exists
+            setSalaryForm({
+                basic_salary: 0,
+                hra_allowance: 0,
+                special_allowance: 0,
+                pf_deduction: 0,
+                professional_tax: 0
+            });
+            setShowConfigModal(true);
         }
     };
 
@@ -96,11 +153,10 @@ export default function PayrollManagement() {
                 responseType: 'blob',
             });
 
-            // Create blob link to download
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `Payslip_${selectedPayroll.employee_name}.pdf`);
+            link.setAttribute('download', `Payslip_${selectedPayroll.employee_name}_${selectedPayroll.month}.pdf`);
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -110,6 +166,13 @@ export default function PayrollManagement() {
         }
     };
 
+    const calculateTotalPayroll = () => {
+        // This would ideally come from the backend
+        return filteredEmployees.length * 25000; // Placeholder
+    };
+
+    const departments = Array.from(new Set(employees.map(e => e.department).filter(Boolean)));
+
     if (loading) return <div className="p-4">Loading...</div>;
 
     return (
@@ -118,6 +181,82 @@ export default function PayrollManagement() {
                 <h2>Payroll Management</h2>
             </div>
 
+            {/* Stats Cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
+                <div className="card" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                            <p style={{ margin: 0, opacity: 0.9, fontSize: '0.875rem' }}>Total Employees</p>
+                            <h2 style={{ margin: '0.5rem 0 0 0', fontSize: '2rem' }}>{employees.length}</h2>
+                        </div>
+                        <Users size={48} style={{ opacity: 0.3 }} />
+                    </div>
+                </div>
+
+                <div className="card" style={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: 'white' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                            <p style={{ margin: 0, opacity: 0.9, fontSize: '0.875rem' }}>Estimated Payroll</p>
+                            <h2 style={{ margin: '0.5rem 0 0 0', fontSize: '2rem' }}>
+                                ₹{(calculateTotalPayroll() / 1000).toFixed(0)}K
+                            </h2>
+                        </div>
+                        <DollarSign size={48} style={{ opacity: 0.3 }} />
+                    </div>
+                </div>
+
+                <div className="card" style={{ background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', color: 'white' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                            <p style={{ margin: 0, opacity: 0.9, fontSize: '0.875rem' }}>Avg Salary</p>
+                            <h2 style={{ margin: '0.5rem 0 0 0', fontSize: '2rem' }}>
+                                ₹{employees.length > 0 ? (calculateTotalPayroll() / employees.length / 1000).toFixed(0) : 0}K
+                            </h2>
+                        </div>
+                        <TrendingUp size={48} style={{ opacity: 0.3 }} />
+                    </div>
+                </div>
+            </div>
+
+            {/* Filters */}
+            <div className="card" style={{ marginBottom: '1.5rem' }}>
+                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <div style={{ flex: 1, minWidth: '200px' }}>
+                        <div style={{ position: 'relative' }}>
+                            <Search size={18} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                            <input
+                                type="text"
+                                placeholder="Search by name or code..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                style={{ paddingLeft: '2.5rem', width: '100%' }}
+                                className="input"
+                            />
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Filter size={18} style={{ color: 'var(--text-muted)' }} />
+                        <select
+                            value={departmentFilter}
+                            onChange={(e) => setDepartmentFilter(e.target.value)}
+                            className="input"
+                            style={{ minWidth: '150px' }}
+                        >
+                            <option value="">All Departments</option>
+                            {departments.map(dept => (
+                                <option key={dept} value={dept}>{dept}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+
+                <div style={{ marginTop: '0.75rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                    Showing {filteredEmployees.length} of {employees.length} employees
+                </div>
+            </div>
+
+            {/* Employee Table */}
             <div className="card">
                 <div className="table-container">
                     <table className="table">
@@ -125,41 +264,74 @@ export default function PayrollManagement() {
                             <tr>
                                 <th>Employee</th>
                                 <th>Code</th>
-                                <th>Action</th>
+                                <th>Department</th>
+                                <th>Designation</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {employees.map(emp => (
-                                <tr key={emp.id}>
-                                    <td>{emp.first_name} {emp.last_name || ''}</td>
-                                    <td><span style={{ fontFamily: 'monospace' }}>{emp.emp_code}</span></td>
-                                    <td>
-                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                            <button
-                                                className="btn"
-                                                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', border: '1px solid #e2e8f0' }}
-                                                onClick={() => handleOpenConfig(emp.id)}
-                                            >
-                                                <Settings size={16} />
-                                                Config Salary
-                                            </button>
-                                            <button
-                                                className="btn btn-primary"
-                                                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem' }}
-                                                onClick={() => handleRunPayroll(emp.id)}
-                                                disabled={!!processingId}
-                                            >
-                                                {processingId === emp.id ? 'Calculating...' : (
-                                                    <>
-                                                        <Calculator size={16} />
-                                                        Run Payroll
-                                                    </>
-                                                )}
-                                            </button>
-                                        </div>
+                            {filteredEmployees.length === 0 ? (
+                                <tr>
+                                    <td colSpan={5} style={{ textAlign: 'center', padding: '2rem' }}>
+                                        <div style={{ color: 'var(--text-muted)' }}>No employees found</div>
                                     </td>
                                 </tr>
-                            ))}
+                            ) : (
+                                filteredEmployees.map(emp => (
+                                    <tr key={emp.id}>
+                                        <td>
+                                            <div style={{ fontWeight: 500 }}>
+                                                {emp.first_name} {emp.last_name || ''}
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                                                {emp.emp_code}
+                                            </span>
+                                        </td>
+                                        <td>{emp.department || '-'}</td>
+                                        <td>{emp.designation || '-'}</td>
+                                        <td>
+                                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                <button
+                                                    className="btn"
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.5rem',
+                                                        fontSize: '0.875rem',
+                                                        padding: '0.5rem 0.75rem',
+                                                        background: '#f3f4f6'
+                                                    }}
+                                                    onClick={() => handleOpenConfig(emp.id, `${emp.first_name} ${emp.last_name || ''}`)}
+                                                >
+                                                    <Settings size={16} />
+                                                    Configure
+                                                </button>
+                                                <button
+                                                    className="btn btn-primary"
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.5rem',
+                                                        fontSize: '0.875rem',
+                                                        padding: '0.5rem 0.75rem'
+                                                    }}
+                                                    onClick={() => handleRunPayroll(emp.id)}
+                                                    disabled={!!processingId}
+                                                >
+                                                    {processingId === emp.id ? 'Processing...' : (
+                                                        <>
+                                                            <Calculator size={16} />
+                                                            Calculate
+                                                        </>
+                                                    )}
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
                         </tbody>
                     </table>
                 </div>
@@ -168,36 +340,132 @@ export default function PayrollManagement() {
             {/* Config Modal */}
             {showConfigModal && (
                 <div style={modalOverlayStyle}>
-                    <div className="card" style={{ width: '400px', padding: '1.5rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                            <h3>Configure Salary</h3>
-                            <button onClick={() => setShowConfigModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
+                    <div className="card" style={{ width: '500px', maxHeight: '90vh', overflowY: 'auto' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+                            <div>
+                                <h3 style={{ margin: 0 }}>Configure Salary Structure</h3>
+                                <p style={{ margin: '0.5rem 0 0 0', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                                    {configEmpName}
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setShowConfigModal(false)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+                            >
+                                <X size={24} />
+                            </button>
                         </div>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <div style={{ display: 'grid', gap: '1.5rem' }}>
+                            {/* Earnings Section */}
                             <div>
-                                <label style={labelStyle}>Basic Salary</label>
-                                <input type="number" style={inputStyle} value={salaryForm.basic_salary} onChange={e => setSalaryForm({ ...salaryForm, basic_salary: Number(e.target.value) })} />
-                            </div>
-                            <div>
-                                <label style={labelStyle}>HRA Allowance</label>
-                                <input type="number" style={inputStyle} value={salaryForm.hra_allowance} onChange={e => setSalaryForm({ ...salaryForm, hra_allowance: Number(e.target.value) })} />
-                            </div>
-                            <div>
-                                <label style={labelStyle}>Special Allowance</label>
-                                <input type="number" style={inputStyle} value={salaryForm.special_allowance} onChange={e => setSalaryForm({ ...salaryForm, special_allowance: Number(e.target.value) })} />
-                            </div>
-                            <div>
-                                <label style={labelStyle}>PF Deduction</label>
-                                <input type="number" style={inputStyle} value={salaryForm.pf_deduction} onChange={e => setSalaryForm({ ...salaryForm, pf_deduction: Number(e.target.value) })} />
-                            </div>
-                            <div>
-                                <label style={labelStyle}>Professional Tax</label>
-                                <input type="number" style={inputStyle} value={salaryForm.professional_tax} onChange={e => setSalaryForm({ ...salaryForm, professional_tax: Number(e.target.value) })} />
+                                <h4 style={{ margin: '0 0 1rem 0', color: '#059669', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <TrendingUp size={18} />
+                                    Earnings
+                                </h4>
+                                <div style={{ display: 'grid', gap: '1rem' }}>
+                                    <div>
+                                        <label style={labelStyle}>Basic Salary *</label>
+                                        <input
+                                            type="number"
+                                            className="input"
+                                            value={salaryForm.basic_salary}
+                                            onChange={e => setSalaryForm({ ...salaryForm, basic_salary: Number(e.target.value) })}
+                                            placeholder="e.g., 15000"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={labelStyle}>HRA Allowance</label>
+                                        <input
+                                            type="number"
+                                            className="input"
+                                            value={salaryForm.hra_allowance}
+                                            onChange={e => setSalaryForm({ ...salaryForm, hra_allowance: Number(e.target.value) })}
+                                            placeholder="e.g., 5000"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={labelStyle}>Special Allowance</label>
+                                        <input
+                                            type="number"
+                                            className="input"
+                                            value={salaryForm.special_allowance}
+                                            onChange={e => setSalaryForm({ ...salaryForm, special_allowance: Number(e.target.value) })}
+                                            placeholder="e.g., 3000"
+                                        />
+                                    </div>
+                                </div>
                             </div>
 
-                            <button className="btn btn-primary" onClick={handleSaveSalary} style={{ marginTop: '1rem' }}>
-                                Save Configuration
+                            {/* Deductions Section */}
+                            <div>
+                                <h4 style={{ margin: '0 0 1rem 0', color: '#dc2626', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <DollarSign size={18} />
+                                    Deductions
+                                </h4>
+                                <div style={{ display: 'grid', gap: '1rem' }}>
+                                    <div>
+                                        <label style={labelStyle}>PF Deduction</label>
+                                        <input
+                                            type="number"
+                                            className="input"
+                                            value={salaryForm.pf_deduction}
+                                            onChange={e => setSalaryForm({ ...salaryForm, pf_deduction: Number(e.target.value) })}
+                                            placeholder="e.g., 1800"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={labelStyle}>Professional Tax</label>
+                                        <input
+                                            type="number"
+                                            className="input"
+                                            value={salaryForm.professional_tax}
+                                            onChange={e => setSalaryForm({ ...salaryForm, professional_tax: Number(e.target.value) })}
+                                            placeholder="e.g., 200"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Summary */}
+                            <div style={{
+                                padding: '1rem',
+                                background: '#f8fafc',
+                                borderRadius: '8px',
+                                border: '1px solid #e2e8f0'
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                    <span style={{ color: 'var(--text-muted)' }}>Gross Salary:</span>
+                                    <span style={{ fontWeight: 600 }}>
+                                        ₹{(salaryForm.basic_salary + salaryForm.hra_allowance + salaryForm.special_allowance).toLocaleString('en-IN')}
+                                    </span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                    <span style={{ color: 'var(--text-muted)' }}>Total Deductions:</span>
+                                    <span style={{ fontWeight: 600, color: '#dc2626' }}>
+                                        ₹{(salaryForm.pf_deduction + salaryForm.professional_tax).toLocaleString('en-IN')}
+                                    </span>
+                                </div>
+                                <div style={{
+                                    borderTop: '2px solid #cbd5e1',
+                                    paddingTop: '0.5rem',
+                                    marginTop: '0.5rem',
+                                    display: 'flex',
+                                    justifyContent: 'space-between'
+                                }}>
+                                    <span style={{ fontWeight: 600 }}>Net Salary:</span>
+                                    <span style={{ fontWeight: 700, fontSize: '1.25rem', color: '#2563eb' }}>
+                                        ₹{(salaryForm.basic_salary + salaryForm.hra_allowance + salaryForm.special_allowance - salaryForm.pf_deduction - salaryForm.professional_tax).toLocaleString('en-IN')}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <button
+                                className="btn btn-primary"
+                                onClick={handleSaveSalary}
+                                style={{ width: '100%', padding: '0.75rem' }}
+                            >
+                                Save Salary Configuration
                             </button>
                         </div>
                     </div>
@@ -207,7 +475,7 @@ export default function PayrollManagement() {
             {/* Payslip Modal */}
             {selectedPayroll && (
                 <div style={modalOverlayStyle}>
-                    <div className="card" style={{ width: '500px', maxHeight: '90vh', overflowY: 'auto' }}>
+                    <div className="card" style={{ width: '550px', maxHeight: '90vh', overflowY: 'auto' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                             <h3 style={{ margin: 0 }}>Payslip Preview</h3>
                             <button onClick={() => setSelectedPayroll(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
@@ -215,70 +483,89 @@ export default function PayrollManagement() {
                             </button>
                         </div>
 
-                        <div style={{ textAlign: 'center', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '1px solid #eee' }}>
-                            <h2 style={{ fontSize: '1.25rem', margin: '0 0 0.5rem 0' }}>{selectedPayroll.employee_name}</h2>
-                            <div className="text-muted">{selectedPayroll.month}</div>
-                            <div className="badge badge-success" style={{ marginTop: '0.5rem' }}>
-                                Present Days: {selectedPayroll.present_days}
+                        <div style={{ textAlign: 'center', marginBottom: '1.5rem', paddingBottom: '1.5rem', borderBottom: '2px solid #e2e8f0' }}>
+                            <h2 style={{ fontSize: '1.5rem', margin: '0 0 0.5rem 0', color: 'var(--primary)' }}>
+                                {selectedPayroll.employee_name}
+                            </h2>
+                            <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '0.5rem' }}>
+                                {selectedPayroll.month}
+                            </div>
+                            <div className="badge badge-success" style={{ fontSize: '0.875rem' }}>
+                                Present Days: {selectedPayroll.present_days} / 30
                             </div>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '1.5rem' }}>
                             <div>
-                                <h4 style={{ color: '#059669', marginBottom: '0.5rem' }}>Earnings</h4>
+                                <h4 style={{ color: '#059669', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <TrendingUp size={18} />
+                                    Earnings
+                                </h4>
                                 <div style={{ fontSize: '0.9rem' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                                        <span>Basic</span>
-                                        <span>{selectedPayroll.payroll.earnings.basic}</span>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                        <span>Basic Salary</span>
+                                        <span style={{ fontWeight: 500 }}>₹{selectedPayroll.payroll.earnings.basic.toLocaleString('en-IN')}</span>
                                     </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                                         <span>HRA</span>
-                                        <span>{selectedPayroll.payroll.earnings.hra}</span>
+                                        <span style={{ fontWeight: 500 }}>₹{selectedPayroll.payroll.earnings.hra.toLocaleString('en-IN')}</span>
                                     </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                        <span>Allowances</span>
-                                        <span>{selectedPayroll.payroll.earnings.special}</span>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                                        <span>Special Allowance</span>
+                                        <span style={{ fontWeight: 500 }}>₹{selectedPayroll.payroll.earnings.special.toLocaleString('en-IN')}</span>
                                     </div>
-                                    <div style={{ borderTop: '1px solid #eee', paddingTop: '0.5rem', fontWeight: 600, display: 'flex', justifyContent: 'space-between' }}>
-                                        <span>Gross</span>
-                                        <span>{selectedPayroll.payroll.earnings.gross_earned}</span>
+                                    <div style={{ borderTop: '2px solid #059669', paddingTop: '0.5rem', fontWeight: 600, display: 'flex', justifyContent: 'space-between', color: '#059669' }}>
+                                        <span>Gross Earned</span>
+                                        <span>₹{selectedPayroll.payroll.earnings.gross_earned.toLocaleString('en-IN')}</span>
                                     </div>
                                 </div>
                             </div>
 
                             <div>
-                                <h4 style={{ color: '#dc2626', marginBottom: '0.5rem' }}>Deductions</h4>
+                                <h4 style={{ color: '#dc2626', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <DollarSign size={18} />
+                                    Deductions
+                                </h4>
                                 <div style={{ fontSize: '0.9rem' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                                        <span>PF</span>
-                                        <span>{selectedPayroll.payroll.deductions.pf}</span>
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                                        <span>Tax</span>
-                                        <span>{selectedPayroll.payroll.deductions.prof_tax}</span>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                        <span>Provident Fund</span>
+                                        <span style={{ fontWeight: 500 }}>₹{selectedPayroll.payroll.deductions.pf.toLocaleString('en-IN')}</span>
                                     </div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                        <span>LOP</span>
-                                        <span>{selectedPayroll.payroll.deductions.lop}</span>
+                                        <span>Professional Tax</span>
+                                        <span style={{ fontWeight: 500 }}>₹{selectedPayroll.payroll.deductions.prof_tax.toLocaleString('en-IN')}</span>
                                     </div>
-                                    <div style={{ borderTop: '1px solid #eee', paddingTop: '0.5rem', fontWeight: 600, display: 'flex', justifyContent: 'space-between' }}>
-                                        <span>Total</span>
-                                        <span>{selectedPayroll.payroll.deductions.total}</span>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                                        <span>Loss of Pay (LOP)</span>
+                                        <span style={{ fontWeight: 500 }}>₹{selectedPayroll.payroll.deductions.lop.toLocaleString('en-IN')}</span>
+                                    </div>
+                                    <div style={{ borderTop: '2px solid #dc2626', paddingTop: '0.5rem', fontWeight: 600, display: 'flex', justifyContent: 'space-between', color: '#dc2626' }}>
+                                        <span>Total Deductions</span>
+                                        <span>₹{selectedPayroll.payroll.deductions.total.toLocaleString('en-IN')}</span>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div style={{ marginTop: '1.5rem', padding: '1rem', background: '#f8fafc', borderRadius: '8px', textAlign: 'center' }}>
-                            <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Net Salary Payable</div>
-                            <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#2563eb' }}>
+                        <div style={{
+                            marginTop: '1.5rem',
+                            padding: '1.5rem',
+                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            borderRadius: '12px',
+                            textAlign: 'center',
+                            color: 'white'
+                        }}>
+                            <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>
+                                Net Salary Payable
+                            </div>
+                            <div style={{ fontSize: '2.5rem', fontWeight: 'bold' }}>
                                 ₹{selectedPayroll.payroll.net_salary.toLocaleString('en-IN')}
                             </div>
                         </div>
 
                         <button
                             className="btn btn-primary"
-                            style={{ width: '100%', marginTop: '1.5rem', display: 'flex', justifyContent: 'center', gap: '0.5rem' }}
+                            style={{ width: '100%', marginTop: '1.5rem', display: 'flex', justifyContent: 'center', gap: '0.5rem', padding: '0.75rem' }}
                             onClick={handleDownloadPdf}
                         >
                             <Download size={18} /> Download Payslip PDF
@@ -291,14 +578,23 @@ export default function PayrollManagement() {
 }
 
 const modalOverlayStyle: React.CSSProperties = {
-    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+    backdropFilter: 'blur(4px)'
 };
 
 const labelStyle: React.CSSProperties = {
-    display: 'block', fontSize: '0.85rem', color: '#64748b', marginBottom: '0.25rem'
-};
-
-const inputStyle: React.CSSProperties = {
-    width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1'
+    display: 'block',
+    fontSize: '0.875rem',
+    fontWeight: 500,
+    color: '#374151',
+    marginBottom: '0.5rem'
 };
