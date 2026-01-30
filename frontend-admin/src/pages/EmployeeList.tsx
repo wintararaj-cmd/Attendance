@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Link } from 'router-dom';
-import { Plus, Edit2, Trash2, Filter, Search, Building2, Briefcase } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Plus, Edit2, Trash2, Search, Building2, Briefcase } from 'lucide-react';
 
 interface Employee {
     id: string;

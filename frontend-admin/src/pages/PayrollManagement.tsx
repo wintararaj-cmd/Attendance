@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Calculator, Download, X, Settings, DollarSign } from 'lucide-react';
+import { Calculator, Download, X, Settings } from 'lucide-react';
 
 interface Employee {
     id: string;
