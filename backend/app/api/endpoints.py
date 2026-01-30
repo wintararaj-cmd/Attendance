@@ -381,7 +381,7 @@ def get_employees(
     
     employees = query.all()
     
-    # Return with formatted data
+    # Return with formatted data (safe attribute access for new fields)
     return [{
         "id": emp.id,
         "emp_code": emp.emp_code,
@@ -389,14 +389,14 @@ def get_employees(
         "last_name": emp.last_name,
         "full_name": f"{emp.first_name} {emp.last_name or ''}".strip(),
         "mobile_no": emp.mobile_no,
-        "email": emp.email,
-        "department": emp.department,
-        "designation": emp.designation,
-        "employee_type": emp.employee_type,
-        "joining_date": emp.joining_date.isoformat() if emp.joining_date else None,
-        "status": emp.status,
+        "email": getattr(emp, 'email', None),
+        "department": getattr(emp, 'department', None),
+        "designation": getattr(emp, 'designation', None),
+        "employee_type": getattr(emp, 'employee_type', 'full_time'),
+        "joining_date": getattr(emp, 'joining_date', None).isoformat() if getattr(emp, 'joining_date', None) else None,
+        "status": getattr(emp, 'status', 'active'),
         "is_face_registered": emp.is_face_registered,
-        "created_at": emp.created_at.isoformat() if emp.created_at else None
+        "created_at": getattr(emp, 'created_at', None).isoformat() if getattr(emp, 'created_at', None) else None
     } for emp in employees]
 
 @router.get("/employees/{emp_id}")
@@ -412,12 +412,12 @@ def get_employee_by_id(emp_id: str, db: Session = Depends(get_db)):
         "first_name": emp.first_name,
         "last_name": emp.last_name,
         "mobile_no": emp.mobile_no,
-        "email": emp.email,
-        "department": emp.department,
-        "designation": emp.designation,
-        "employee_type": emp.employee_type,
-        "joining_date": emp.joining_date.isoformat() if emp.joining_date else None,
-        "status": emp.status,
+        "email": getattr(emp, 'email', None),
+        "department": getattr(emp, 'department', None),
+        "designation": getattr(emp, 'designation', None),
+        "employee_type": getattr(emp, 'employee_type', 'full_time'),
+        "joining_date": getattr(emp, 'joining_date', None).isoformat() if getattr(emp, 'joining_date', None) else None,
+        "status": getattr(emp, 'status', 'active'),
         "is_face_registered": emp.is_face_registered,
         "company_id": emp.company_id
     }
@@ -547,36 +547,46 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
             "id": log.id,
             "employee_name": f"{log.employee.first_name} {log.employee.last_name or ''}",
             "emp_code": log.employee.emp_code,
-            "department": log.employee.department,
+            "department": getattr(log.employee, 'department', None),
             "time": log.check_in.strftime("%I:%M %p") if log.check_in else "--:--",
             "status": log.status
         })
     
-    # Department breakdown
-    dept_stats = db.query(
-        Employee.department,
-        func.count(Employee.id).label('count')
-    ).filter(
-        Employee.status == 'active'
-    ).group_by(Employee.department).all()
+    # Department breakdown (safe query for new columns)
+    department_breakdown = []
+    try:
+        dept_stats = db.query(
+            Employee.department,
+            func.count(Employee.id).label('count')
+        ).filter(
+            Employee.status == 'active'
+        ).group_by(Employee.department).all()
+        
+        department_breakdown = [{
+            "department": dept or "Unassigned",
+            "count": count
+        } for dept, count in dept_stats]
+    except Exception as e:
+        print(f"⚠️ Department stats query failed (columns may not exist yet): {e}")
+        department_breakdown = [{"department": "All", "count": total_employees}]
     
-    department_breakdown = [{
-        "department": dept or "Unassigned",
-        "count": count
-    } for dept, count in dept_stats]
-    
-    # Employee type breakdown
-    type_stats = db.query(
-        Employee.employee_type,
-        func.count(Employee.id).label('count')
-    ).filter(
-        Employee.status == 'active'
-    ).group_by(Employee.employee_type).all()
-    
-    employee_type_breakdown = [{
-        "type": emp_type or "full_time",
-        "count": count
-    } for emp_type, count in type_stats]
+    # Employee type breakdown (safe query for new columns)
+    employee_type_breakdown = []
+    try:
+        type_stats = db.query(
+            Employee.employee_type,
+            func.count(Employee.id).label('count')
+        ).filter(
+            Employee.status == 'active'
+        ).group_by(Employee.employee_type).all()
+        
+        employee_type_breakdown = [{
+            "type": emp_type or "full_time",
+            "count": count
+        } for emp_type, count in type_stats]
+    except Exception as e:
+        print(f"⚠️ Employee type stats query failed (columns may not exist yet): {e}")
+        employee_type_breakdown = [{"type": "full_time", "count": total_employees}]
     
     return {
         "total_employees": total_employees,
