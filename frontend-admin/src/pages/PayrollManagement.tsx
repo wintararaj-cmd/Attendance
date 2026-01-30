@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Calculator, Download, X } from 'lucide-react';
+import { Calculator, Download, X, Settings, DollarSign } from 'lucide-react';
 
 interface Employee {
     id: string;
@@ -10,6 +10,7 @@ interface Employee {
 }
 
 interface PayrollData {
+    employee_id: string;
     employee_name: string;
     month: string;
     present_days: number;
@@ -17,13 +18,11 @@ interface PayrollData {
         earnings: {
             basic: number;
             hra: number;
-            da: number;
-            special: number;
             gross_earned: number;
+            special: number;
         };
         deductions: {
             pf: number;
-            esi: number;
             prof_tax: number;
             lop: number;
             total: number;
@@ -38,6 +37,17 @@ export default function PayrollManagement() {
     const [selectedPayroll, setSelectedPayroll] = useState<PayrollData | null>(null);
     const [processingId, setProcessingId] = useState<string | null>(null);
 
+    // Config Modal State
+    const [showConfigModal, setShowConfigModal] = useState(false);
+    const [configEmpId, setConfigEmpId] = useState<string | null>(null);
+    const [salaryForm, setSalaryForm] = useState({
+        basic_salary: 0,
+        hra_allowance: 0,
+        special_allowance: 0,
+        pf_deduction: 0,
+        professional_tax: 0
+    });
+
     useEffect(() => {
         axios.get('/api/v1/employees')
             .then(res => setEmployees(res.data))
@@ -51,9 +61,52 @@ export default function PayrollManagement() {
             const res = await axios.get(`/api/v1/payroll/employee/${empId}`);
             setSelectedPayroll(res.data);
         } catch (err) {
-            alert("Failed to calculate payroll");
+            alert("Failed to calculate payroll. Ensure salary is configured.");
         } finally {
             setProcessingId(null);
+        }
+    };
+
+    const handleOpenConfig = async (empId: string) => {
+        setConfigEmpId(empId);
+        try {
+            const res = await axios.get(`/api/v1/employees/${empId}/salary`);
+            setSalaryForm(res.data);
+            setShowConfigModal(true);
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    const handleSaveSalary = async () => {
+        if (!configEmpId) return;
+        try {
+            await axios.post(`/api/v1/employees/${configEmpId}/salary`, salaryForm);
+            alert("Salary structure saved successfully!");
+            setShowConfigModal(false);
+        } catch (err) {
+            alert("Failed to save salary.");
+        }
+    };
+
+    const handleDownloadPdf = async () => {
+        if (!selectedPayroll) return;
+        try {
+            const response = await axios.get(`/api/v1/payroll/payslip/${selectedPayroll.employee_id}/pdf`, {
+                responseType: 'blob',
+            });
+
+            // Create blob link to download
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Payslip_${selectedPayroll.employee_name}.pdf`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (error) {
+            console.error('Error downloading PDF:', error);
+            alert("Failed to download PDF.");
         }
     };
 
@@ -81,19 +134,29 @@ export default function PayrollManagement() {
                                     <td>{emp.first_name} {emp.last_name || ''}</td>
                                     <td><span style={{ fontFamily: 'monospace' }}>{emp.emp_code}</span></td>
                                     <td>
-                                        <button
-                                            className="btn btn-primary"
-                                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem' }}
-                                            onClick={() => handleRunPayroll(emp.id)}
-                                            disabled={!!processingId}
-                                        >
-                                            {processingId === emp.id ? 'Calculating...' : (
-                                                <>
-                                                    <Calculator size={16} />
-                                                    Run Payroll
-                                                </>
-                                            )}
-                                        </button>
+                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                            <button
+                                                className="btn"
+                                                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', border: '1px solid #e2e8f0' }}
+                                                onClick={() => handleOpenConfig(emp.id)}
+                                            >
+                                                <Settings size={16} />
+                                                Config Salary
+                                            </button>
+                                            <button
+                                                className="btn btn-primary"
+                                                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem' }}
+                                                onClick={() => handleRunPayroll(emp.id)}
+                                                disabled={!!processingId}
+                                            >
+                                                {processingId === emp.id ? 'Calculating...' : (
+                                                    <>
+                                                        <Calculator size={16} />
+                                                        Run Payroll
+                                                    </>
+                                                )}
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
@@ -102,11 +165,48 @@ export default function PayrollManagement() {
                 </div>
             </div>
 
+            {/* Config Modal */}
+            {showConfigModal && (
+                <div style={modalOverlayStyle}>
+                    <div className="card" style={{ width: '400px', padding: '1.5rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                            <h3>Configure Salary</h3>
+                            <button onClick={() => setShowConfigModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <div>
+                                <label style={labelStyle}>Basic Salary</label>
+                                <input type="number" style={inputStyle} value={salaryForm.basic_salary} onChange={e => setSalaryForm({ ...salaryForm, basic_salary: Number(e.target.value) })} />
+                            </div>
+                            <div>
+                                <label style={labelStyle}>HRA Allowance</label>
+                                <input type="number" style={inputStyle} value={salaryForm.hra_allowance} onChange={e => setSalaryForm({ ...salaryForm, hra_allowance: Number(e.target.value) })} />
+                            </div>
+                            <div>
+                                <label style={labelStyle}>Special Allowance</label>
+                                <input type="number" style={inputStyle} value={salaryForm.special_allowance} onChange={e => setSalaryForm({ ...salaryForm, special_allowance: Number(e.target.value) })} />
+                            </div>
+                            <div>
+                                <label style={labelStyle}>PF Deduction</label>
+                                <input type="number" style={inputStyle} value={salaryForm.pf_deduction} onChange={e => setSalaryForm({ ...salaryForm, pf_deduction: Number(e.target.value) })} />
+                            </div>
+                            <div>
+                                <label style={labelStyle}>Professional Tax</label>
+                                <input type="number" style={inputStyle} value={salaryForm.professional_tax} onChange={e => setSalaryForm({ ...salaryForm, professional_tax: Number(e.target.value) })} />
+                            </div>
+
+                            <button className="btn btn-primary" onClick={handleSaveSalary} style={{ marginTop: '1rem' }}>
+                                Save Configuration
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Payslip Modal */}
             {selectedPayroll && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                    backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000
-                }}>
+                <div style={modalOverlayStyle}>
                     <div className="card" style={{ width: '500px', maxHeight: '90vh', overflowY: 'auto' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                             <h3 style={{ margin: 0 }}>Payslip Preview</h3>
@@ -176,8 +276,12 @@ export default function PayrollManagement() {
                             </div>
                         </div>
 
-                        <button className="btn btn-primary" style={{ width: '100%', marginTop: '1.5rem', display: 'flex', justifyContent: 'center', gap: '0.5rem' }}>
-                            <Download size={18} /> Download Payslip
+                        <button
+                            className="btn btn-primary"
+                            style={{ width: '100%', marginTop: '1.5rem', display: 'flex', justifyContent: 'center', gap: '0.5rem' }}
+                            onClick={handleDownloadPdf}
+                        >
+                            <Download size={18} /> Download Payslip PDF
                         </button>
                     </div>
                 </div>
@@ -185,3 +289,16 @@ export default function PayrollManagement() {
         </div>
     );
 }
+
+const modalOverlayStyle: React.CSSProperties = {
+    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000
+};
+
+const labelStyle: React.CSSProperties = {
+    display: 'block', fontSize: '0.85rem', color: '#64748b', marginBottom: '0.25rem'
+};
+
+const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1'
+};

@@ -363,10 +363,146 @@ async def mark_attendance(
             os.remove(temp_file)
 
 @router.get("/employees")
-def get_employees(db: Session = Depends(get_db)):
-    employees = db.query(Employee).all()
-    # Safely convert to list of dicts or rely on FastAPI ORM mode if schemas were defined
-    return employees
+def get_employees(
+    department: Optional[str] = None,
+    employee_type: Optional[str] = None,
+    status: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Get all employees with optional filters"""
+    query = db.query(Employee)
+    
+    if department:
+        query = query.filter(Employee.department == department)
+    if employee_type:
+        query = query.filter(Employee.employee_type == employee_type)
+    if status:
+        query = query.filter(Employee.status == status)
+    
+    employees = query.all()
+    
+    # Return with formatted data
+    return [{
+        "id": emp.id,
+        "emp_code": emp.emp_code,
+        "first_name": emp.first_name,
+        "last_name": emp.last_name,
+        "full_name": f"{emp.first_name} {emp.last_name or ''}".strip(),
+        "mobile_no": emp.mobile_no,
+        "email": emp.email,
+        "department": emp.department,
+        "designation": emp.designation,
+        "employee_type": emp.employee_type,
+        "joining_date": emp.joining_date.isoformat() if emp.joining_date else None,
+        "status": emp.status,
+        "is_face_registered": emp.is_face_registered,
+        "created_at": emp.created_at.isoformat() if emp.created_at else None
+    } for emp in employees]
+
+@router.get("/employees/{emp_id}")
+def get_employee_by_id(emp_id: str, db: Session = Depends(get_db)):
+    """Get single employee details"""
+    emp = db.query(Employee).filter(Employee.id == emp_id).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    
+    return {
+        "id": emp.id,
+        "emp_code": emp.emp_code,
+        "first_name": emp.first_name,
+        "last_name": emp.last_name,
+        "mobile_no": emp.mobile_no,
+        "email": emp.email,
+        "department": emp.department,
+        "designation": emp.designation,
+        "employee_type": emp.employee_type,
+        "joining_date": emp.joining_date.isoformat() if emp.joining_date else None,
+        "status": emp.status,
+        "is_face_registered": emp.is_face_registered,
+        "company_id": emp.company_id
+    }
+
+@router.put("/employees/{emp_id}")
+def update_employee(
+    emp_id: str,
+    data: dict = Body(...),
+    db: Session = Depends(get_db)
+):
+    """Update employee details"""
+    emp = db.query(Employee).filter(Employee.id == emp_id).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    
+    # Update allowed fields
+    allowed_fields = [
+        'first_name', 'last_name', 'mobile_no', 'email',
+        'department', 'designation', 'employee_type', 'status'
+    ]
+    
+    for field in allowed_fields:
+        if field in data:
+            setattr(emp, field, data[field])
+    
+    # Handle joining_date separately (date parsing)
+    if 'joining_date' in data and data['joining_date']:
+        from datetime import datetime as dt
+        emp.joining_date = dt.fromisoformat(data['joining_date']).date()
+    
+    try:
+        db.commit()
+        db.refresh(emp)
+        return {"status": "success", "message": "Employee updated successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/employees/{emp_id}")
+def delete_employee(emp_id: str, db: Session = Depends(get_db)):
+    """Delete employee (soft delete by setting status to inactive)"""
+    emp = db.query(Employee).filter(Employee.id == emp_id).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    
+    # Soft delete
+    emp.status = "inactive"
+    db.commit()
+    
+    return {"status": "success", "message": "Employee deactivated successfully"}
+
+@router.get("/dashboard/department-stats")
+def get_department_stats(db: Session = Depends(get_db)):
+    """Get employee count by department"""
+    from sqlalchemy import func
+    
+    dept_stats = db.query(
+        Employee.department,
+        func.count(Employee.id).label('count')
+    ).filter(
+        Employee.status == 'active'
+    ).group_by(Employee.department).all()
+    
+    return [{
+        "department": dept or "Unassigned",
+        "count": count
+    } for dept, count in dept_stats]
+
+@router.get("/dashboard/employee-type-stats")
+def get_employee_type_stats(db: Session = Depends(get_db)):
+    """Get employee count by type"""
+    from sqlalchemy import func
+    
+    type_stats = db.query(
+        Employee.employee_type,
+        func.count(Employee.id).label('count')
+    ).filter(
+        Employee.status == 'active'
+    ).group_by(Employee.employee_type).all()
+    
+    return [{
+        "employee_type": emp_type or "full_time",
+        "count": count
+    } for emp_type, count in type_stats]
+
 
 @router.post("/payroll/calculate-demo")
 async def calculate_payroll(
@@ -386,7 +522,9 @@ async def calculate_payroll(
 
 @router.get("/dashboard/stats")
 def get_dashboard_stats(db: Session = Depends(get_db)):
-    total_employees = db.query(Employee).count()
+    from sqlalchemy import func
+    
+    total_employees = db.query(Employee).filter(Employee.status == 'active').count()
     
     today = datetime.date.today()
     
@@ -402,22 +540,52 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     absent_count = max(0, total_employees - present_count)
 
     # Fetch recent logs for the dashboard widget
-    logs = db.query(AttendanceLog).join(Employee).order_by(AttendanceLog.check_in.desc()).limit(5).all()
+    logs = db.query(AttendanceLog).join(Employee).order_by(AttendanceLog.check_in.desc()).limit(10).all()
     recent_activity = []
     for log in logs:
         recent_activity.append({
             "id": log.id,
             "employee_name": f"{log.employee.first_name} {log.employee.last_name or ''}",
+            "emp_code": log.employee.emp_code,
+            "department": log.employee.department,
             "time": log.check_in.strftime("%I:%M %p") if log.check_in else "--:--",
             "status": log.status
         })
+    
+    # Department breakdown
+    dept_stats = db.query(
+        Employee.department,
+        func.count(Employee.id).label('count')
+    ).filter(
+        Employee.status == 'active'
+    ).group_by(Employee.department).all()
+    
+    department_breakdown = [{
+        "department": dept or "Unassigned",
+        "count": count
+    } for dept, count in dept_stats]
+    
+    # Employee type breakdown
+    type_stats = db.query(
+        Employee.employee_type,
+        func.count(Employee.id).label('count')
+    ).filter(
+        Employee.status == 'active'
+    ).group_by(Employee.employee_type).all()
+    
+    employee_type_breakdown = [{
+        "type": emp_type or "full_time",
+        "count": count
+    } for emp_type, count in type_stats]
     
     return {
         "total_employees": total_employees,
         "present_today": present_count,
         "absent_today": absent_count,
         "late_count": 0, # Placeholder for future logic
-        "recent_activity": recent_activity
+        "recent_activity": recent_activity,
+        "department_breakdown": department_breakdown,
+        "employee_type_breakdown": employee_type_breakdown
     }
 
 @router.get("/payroll/employee/{emp_id}")

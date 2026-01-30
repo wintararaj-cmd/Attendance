@@ -48,10 +48,22 @@ class Employee(Base):
     first_name = Column(String, nullable=False)
     last_name = Column(String)
     mobile_no = Column(String, unique=True, nullable=False)
+    email = Column(String, unique=True, nullable=True)
+    
+    # Employment Details
+    department = Column(String, nullable=True)  # 'IT', 'HR', 'Finance', 'Operations', etc.
+    designation = Column(String, nullable=True)  # 'Manager', 'Developer', 'Analyst', etc.
+    employee_type = Column(String, default="full_time")  # 'full_time', 'part_time', 'contract', 'intern'
+    joining_date = Column(Date, nullable=True)
+    status = Column(String, default="active")  # 'active', 'inactive', 'suspended'
     
     # AI / Biometric Data references
     face_encoding_ref = Column(String, nullable=True) # Path to storage or vector ID
     is_face_registered = Column(Boolean, default=False)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     company = relationship("Company", back_populates="employees")
     attendance_logs = relationship("AttendanceLog", back_populates="employee")
