@@ -63,9 +63,6 @@ export default function PayrollManagement() {
         professional_tax: 0
     });
 
-    // Bulk payroll state
-    const [bulkProcessing, setBulkProcessing] = useState(false);
-
     useEffect(() => {
         fetchEmployees();
     }, []);
