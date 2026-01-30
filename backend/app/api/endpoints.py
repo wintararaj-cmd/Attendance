@@ -269,6 +269,7 @@ async def mark_attendance(
 
         if emp_id:
             # --- 1:1 Matching ---
+            print(f"🔍 1:1 Matching mode for Employee ID: {emp_id}")
             emp = db.query(Employee).filter(Employee.emp_code == emp_id).first()
             if not emp:
                 raise HTTPException(status_code=404, detail="Employee not found")
@@ -280,25 +281,31 @@ async def mark_attendance(
             if result["match"]:
                 matched_emp = emp
                 confidence = result["confidence"]
+                print(f"✅ 1:1 Match successful for {emp.emp_code} with confidence {confidence:.2f}")
             else:
+                print(f"❌ 1:1 Match failed for {emp.emp_code}: {result.get('reason', 'Face mismatch')}")
                 return {"status": "failed", "reason": result.get("reason", "Face mismatch")}
         
         else:
             # --- 1:N Search (Auto Detect) ---
-            print("Running 1:N Face Search...")
+            print("🔍 1:N Auto-Detection mode (no Employee ID provided)")
             all_employees = db.query(Employee).filter(Employee.is_face_registered == True).all()
+            print(f"📋 Found {len(all_employees)} registered employees in database")
             
             candidates = {}
             for e in all_employees:
                 if e.face_encoding_ref:
                     candidates[e.id] = json.loads(e.face_encoding_ref)
             
+            print(f"🎯 Searching among {len(candidates)} face candidates...")
             result = face_service.identify_face(temp_file, candidates)
             
             if result["match"]:
                 matched_emp = db.query(Employee).filter(Employee.id == result["employee_id"]).first()
                 confidence = result["confidence"]
+                print(f"✅ 1:N Match successful! Identified: {matched_emp.emp_code} ({matched_emp.first_name}) with confidence {confidence:.2f}")
             else:
+                 print(f"❌ 1:N Match failed: {result.get('reason', 'Face not recognized')}")
                  return {"status": "failed", "reason": result.get("reason", "Face not recognized")}
 
         if matched_emp:

@@ -111,13 +111,18 @@ class FaceRecognitionService:
         Returns: {match: bool, employee_id: str|None, confidence: float}
         """
         if self.mock_mode:
-            # In mock mode, just return the first candidate as a match
+            # In mock mode, randomly select a candidate to simulate face matching
             if not candidates:
                  return {"match": False, "reason": "No candidates provided"}
             
-            # Simulate a match with the first person found
-            first_id = next(iter(candidates))
-            return {"match": True, "employee_id": first_id, "confidence": 0.92}
+            # Use a simple hash of the image path to consistently pick the same person for the same image
+            import hashlib
+            image_hash = int(hashlib.md5(live_image_path.encode()).hexdigest(), 16)
+            candidate_list = list(candidates.keys())
+            selected_id = candidate_list[image_hash % len(candidate_list)]
+            
+            print(f"🎭 MOCK MODE: Auto-detected employee from {len(candidates)} candidates")
+            return {"match": True, "employee_id": selected_id, "confidence": 0.92}
 
         try:
             if not DeepFace:
