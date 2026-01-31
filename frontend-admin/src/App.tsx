@@ -13,7 +13,7 @@ import axios from 'axios';
 
 // Configure Axios base URL for production
 // Configure Axios base URL for production
-const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://backend.140.245.242.116.sslip.io';
+const apiUrl = import.meta.env.VITE_API_BASE_URL || 'https://api.t3sol.in';
 console.log("Configured API URL:", apiUrl);
 
 if (apiUrl) {
