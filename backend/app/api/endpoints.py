@@ -267,8 +267,11 @@ async def register_face(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    # Check if employee already exists by code or mobile
-    existing_emp = db.query(Employee).filter((Employee.emp_code == emp_id) | (Employee.mobile_no == mobile_no)).first()
+    # Check if employee already exists by code or mobile (only active employees)
+    existing_emp = db.query(Employee).filter(
+        (Employee.emp_code == emp_id) | (Employee.mobile_no == mobile_no),
+        Employee.status == 'active'
+    ).first()
     if existing_emp:
         raise HTTPException(status_code=400, detail="Employee with this Code or Mobile No already exists")
 
@@ -704,17 +707,33 @@ def update_employee(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/employees/{emp_id}")
-def delete_employee(emp_id: str, db: Session = Depends(get_db)):
-    """Delete employee (soft delete by setting status to inactive)"""
+def delete_employee(
+    emp_id: str, 
+    hard_delete: bool = False,
+    db: Session = Depends(get_db)
+):
+    """
+    Delete employee
+    - Default: Soft delete (set status to inactive)
+    - hard_delete=true: Permanently delete from database
+    """
     emp = db.query(Employee).filter(Employee.id == emp_id).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
     
-    # Soft delete
-    emp.status = "inactive"
-    db.commit()
-    
-    return {"status": "success", "message": "Employee deactivated successfully"}
+    if hard_delete:
+        # Hard delete - permanently remove
+        # First delete related attendance logs
+        db.query(AttendanceLog).filter(AttendanceLog.employee_id == emp_id).delete()
+        # Then delete employee
+        db.delete(emp)
+        db.commit()
+        return {"status": "success", "message": "Employee permanently deleted"}
+    else:
+        # Soft delete - just mark as inactive
+        emp.status = "inactive"
+        db.commit()
+        return {"status": "success", "message": "Employee deactivated successfully"}
 
 @router.get("/dashboard/department-stats")
 def get_department_stats(db: Session = Depends(get_db)):
