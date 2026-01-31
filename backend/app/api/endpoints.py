@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends, Body
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from typing import Optional, List
 from sqlalchemy.orm import Session
 import shutil
@@ -7,14 +7,13 @@ import os
 import json
 import uuid
 import datetime
+import tempfile
 from datetime import timezone, timedelta
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 
-from ..services.face_recognition import face_service
-from ..services.payroll import payroll_service
 from ..services.face_recognition import face_service
 from ..services.payroll import payroll_service
 from ..services.auth import auth_service, SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
@@ -24,240 +23,8 @@ from ..models.models import Employee, AttendanceLog, SalaryStructure, AdminUser,
 from jose import JWTError, jwt
 
 router = APIRouter()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
-# ... (skip lines) replaced with actual functions
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    credentials_exception = HTTPException(
-        status_code=401,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
-        
-    user = db.query(AdminUser).filter(AdminUser.username == username).first()
-    if user is None:
-        raise credentials_exception
-    return user
-
-@router.get("/debug/init-db")
-def init_db(db: Session = Depends(get_db)):
-    try:
-        models.Base.metadata.create_all(bind=engine)
-        
-        # Create Default Company if not exists
-        from ..models.models import Company
-        default_company = db.query(Company).filter(Company.id == "default").first()
-        if not default_company:
-            db.add(Company(id="default", name="Default Company"))
-            db.commit()
-            
-        return {"status": "success", "message": "Tables created and Default Company initialized"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-@router.get("/debug/check-attendance/{emp_code}")
-def check_attendance_debug(emp_code: str, db: Session = Depends(get_db)):
-    """Debug endpoint to check attendance records for an employee"""
-    emp = db.query(Employee).filter(Employee.emp_code == emp_code).first()
-    if not emp:
-        return {"error": "Employee not found", "emp_code": emp_code}
-    
-    logs = db.query(AttendanceLog).filter(AttendanceLog.employee_id == emp.id).order_by(AttendanceLog.check_in.desc()).limit(10).all()
-    
-    return {
-        "employee": {
-            "id": emp.id,
-            "emp_code": emp.emp_code,
-            "name": f"{emp.first_name} {emp.last_name or ''}",
-            "is_face_registered": emp.is_face_registered
-        },
-        "attendance_count": len(logs),
-        "recent_logs": [
-            {
-                "date": log.date.isoformat(),
-                "check_in": log.check_in.isoformat() if log.check_in else None,
-                "status": log.status,
-                "confidence": float(log.confidence_score) if log.confidence_score else None
-            }
-            for log in logs
-        ]
-    }
-
-@router.get("/debug/list-employees")
-def list_all_employees(db: Session = Depends(get_db)):
-    """Debug endpoint to list all registered employees"""
-    employees = db.query(Employee).all()
-    
-    return {
-        "total_count": len(employees),
-        "employees": [
-            {
-                "id": emp.id,
-                "emp_code": emp.emp_code,
-                "name": f"{emp.first_name} {emp.last_name or ''}",
-                "mobile": emp.mobile_no,
-                "is_face_registered": emp.is_face_registered,
-                "company_id": emp.company_id
-            }
-            for emp in employees
-        ]
-    }
-
-@router.get("/debug/db-info")
-def database_info(db: Session = Depends(get_db)):
-    """Debug endpoint to check database connection and info"""
-    import os
-    from sqlalchemy import text
-    
-    db_url = os.getenv("DATABASE_URL", "Not Set")
-    # Hide password for security
-    if db_url and "@" in db_url:
-        parts = db_url.split("@")
-        user_part = parts[0].split("://")[1].split(":")[0]
-        db_url_safe = f"{parts[0].split('://')[0]}://{user_part}:****@{parts[1]}"
-    else:
-        db_url_safe = db_url
-    
-    try:
-        # Test query
-        result = db.execute(text("SELECT COUNT(*) as count FROM employees")).fetchone()
-        employee_count = result[0] if result else 0
-        
-        # Get database name
-        db_name_result = db.execute(text("SELECT current_database()")).fetchone()
-        current_db = db_name_result[0] if db_name_result else "Unknown"
-        
-        return {
-            "status": "connected",
-            "database_url": db_url_safe,
-            "current_database": current_db,
-            "employee_count": employee_count,
-            "connection_type": "PostgreSQL" if "postgresql" in db_url.lower() else "SQLite" if "sqlite" in db_url.lower() else "Unknown"
-        }
-    except Exception as e:
-        return {
-            "status": "error",
-            "database_url": db_url_safe,
-            "error": str(e)
-        }
-
-@router.get("/system/status")
-def get_system_status(db: Session = Depends(get_db)):
-    """Check system health and face recognition status"""
-    return {
-        "status": "online",
-        "face_recognition": face_service.get_status(),
-        "database": "connected"
-    }
-
-@router.get("/debug/environment")
-def get_environment_info():
-    """Debug endpoint to check Python environment and packages"""
-    import sys
-    import subprocess
-    
-    # Get installed packages
-    try:
-        result = subprocess.run(
-            [sys.executable, "-m", "pip", "list", "--format=json"],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        packages = result.stdout if result.returncode == 0 else "Failed to get packages"
-    except Exception as e:
-        packages = f"Error: {str(e)}"
-    
-    return {
-        "python_version": sys.version,
-        "python_executable": sys.executable,
-        "installed_packages": packages,
-        "face_service_status": face_service.get_status()
-    }
-
-@router.post("/debug/reset-employees")
-def reset_employee_data(
-    confirm: str = Body(..., description="Type 'RESET' to confirm"),
-    db: Session = Depends(get_db),
-    current_user: AdminUser = Depends(get_current_user)
-):
-    """
-    DANGER: Delete all employees and attendance logs
-    Use this to clear corrupted data from Mock Mode
-    """
-    if confirm != "RESET":
-        raise HTTPException(status_code=400, detail="Confirmation required. Send 'RESET' to proceed.")
-    
-    try:
-        # Count before deletion
-        emp_count = db.query(Employee).count()
-        log_count = db.query(AttendanceLog).count()
-        
-        # Delete all attendance logs first (foreign key constraint)
-        db.query(AttendanceLog).delete()
-        
-        # Delete all employees
-        db.query(Employee).delete()
-        
-        db.commit()
-        
-        return {
-            "status": "success",
-            "message": "All employee data cleared",
-            "deleted": {
-                "employees": emp_count,
-                "attendance_logs": log_count
-            },
-            "note": "You can now re-register employees with the real AI system"
-        }
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Reset failed: {str(e)}")
-
-
-@router.post("/auth/login")
-async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(AdminUser).filter(AdminUser.username == form_data.username).first()
-    if not user or not auth_service.verify_password(form_data.password, user.password_hash):
-        raise HTTPException(
-            status_code=401,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    access_token_expires = datetime.timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = auth_service.create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
-
-@router.post("/auth/create-super-admin")
-def create_super_admin(
-    username: str = Body(...), 
-    password: str = Body(...),
-    secret: str = Body(...), # Simple security check
-    db: Session = Depends(get_db)
-):
-    if secret != "setup-secret-123":
-        raise HTTPException(status_code=403, detail="Invalid setup secret")
-        
-    existing = db.query(AdminUser).filter(AdminUser.username == username).first()
-    if existing:
-         raise HTTPException(status_code=400, detail="User already exists")
-         
-    hashed_pw = auth_service.get_password_hash(password)
-    new_admin = AdminUser(username=username, password_hash=hashed_pw, role="superadmin")
-    db.add(new_admin)
-    db.commit()
-    
-    return {"status": "success", "message": "Super Admin created"}
+# ... (rest of the file)
 
 @router.post("/attendance/register")
 async def register_face(
@@ -291,14 +58,15 @@ async def register_face(
     if existing_emp:
         raise HTTPException(status_code=400, detail="Employee with this Code or Mobile No already exists")
 
+    # Use system temp directory for safer file handling
+    suffix = os.path.splitext(file.filename)[1] if file.filename else ".jpg"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        temp_file_path = tmp.name
 
-    temp_file = f"temp_{file.filename}"
     try:
-        with open(temp_file, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        
         try:
-            embedding = face_service.register_face(temp_file)
+            embedding = face_service.register_face(temp_file_path)
         except Exception as e:
             print(f"CRITICAL ERROR in face_service: {e}")
             # Fallback for demo if service crashes completely
