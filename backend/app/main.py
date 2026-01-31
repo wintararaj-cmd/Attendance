@@ -15,7 +15,15 @@ models.Base.metadata.create_all(bind=engine)
 # CORS Configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex="https?://.*", # Allow all http and https origins
+    allow_origins=[
+        "https://t3sol.in",
+        "https://terminal.t3sol.in",
+        "https://api.t3sol.in",
+        "https://backend.140.245.242.116.sslip.io",
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "*"  # Allow all origins as fallback
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
