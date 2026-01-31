@@ -24,5 +24,13 @@ COPY . .
 # Expose port
 EXPOSE 8000
 
-# Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Create startup script
+RUN echo '#!/bin/bash\n\
+echo "🔄 Running database migration..."\n\
+python migrate_db.py || echo "⚠️ Migration failed, continuing anyway..."\n\
+echo "🚀 Starting server..."\n\
+exec uvicorn app.main:app --host 0.0.0.0 --port 8000\n\
+' > /app/start.sh && chmod +x /app/start.sh
+
+# Run the startup script
+CMD ["/bin/bash", "/app/start.sh"]

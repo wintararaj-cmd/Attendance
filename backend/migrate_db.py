@@ -67,6 +67,52 @@ def run_migration():
             else:
                 print(f"  ⏭️  Skipping: {column_name} (already exists)")
         
+        # Create companies table if it doesn't exist
+        if 'companies' not in inspector.get_table_names():
+            print("\n📦 Creating companies table...")
+            create_companies_sql = """
+            CREATE TABLE companies (
+                id VARCHAR PRIMARY KEY,
+                name VARCHAR NOT NULL,
+                domain VARCHAR UNIQUE,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+            try:
+                conn.execute(text(create_companies_sql))
+                conn.commit()
+                print("  ✅ Companies table created successfully")
+                
+                # Insert default company
+                conn.execute(text("INSERT INTO companies (id, name) VALUES ('default', 'Default Company')"))
+                conn.commit()
+                print("  ✅ Default company inserted")
+            except Exception as e:
+                print(f"  ⚠️  Warning: Could not create companies table: {str(e)}")
+        else:
+            print("\n⏭️  Companies table already exists")
+        
+        # Create admin_users table if it doesn't exist
+        if 'admin_users' not in inspector.get_table_names():
+            print("\n📦 Creating admin_users table...")
+            create_admin_users_sql = """
+            CREATE TABLE admin_users (
+                id VARCHAR PRIMARY KEY,
+                username VARCHAR UNIQUE NOT NULL,
+                password_hash VARCHAR NOT NULL,
+                role VARCHAR DEFAULT 'admin',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+            try:
+                conn.execute(text(create_admin_users_sql))
+                conn.commit()
+                print("  ✅ Admin users table created successfully")
+            except Exception as e:
+                print(f"  ⚠️  Warning: Could not create admin_users table: {str(e)}")
+        else:
+            print("\n⏭️  Admin users table already exists")
+        
         # Create departments table if it doesn't exist
         if 'departments' not in inspector.get_table_names():
             print("\n📦 Creating departments table...")
@@ -91,6 +137,30 @@ def run_migration():
                 print(f"  ⚠️  Warning: Could not create departments table: {str(e)}")
         else:
             print("\n⏭️  Departments table already exists")
+        
+        # Create salary_structures table if it doesn't exist
+        if 'salary_structures' not in inspector.get_table_names():
+            print("\n📦 Creating salary_structures table...")
+            create_salary_structures_sql = """
+            CREATE TABLE salary_structures (
+                id VARCHAR PRIMARY KEY,
+                employee_id VARCHAR UNIQUE,
+                basic_salary NUMERIC(12, 2) DEFAULT 0.0,
+                hra_allowance NUMERIC(12, 2) DEFAULT 0.0,
+                special_allowance NUMERIC(12, 2) DEFAULT 0.0,
+                pf_deduction NUMERIC(12, 2) DEFAULT 0.0,
+                professional_tax NUMERIC(12, 2) DEFAULT 0.0,
+                FOREIGN KEY (employee_id) REFERENCES employees(id)
+            )
+            """
+            try:
+                conn.execute(text(create_salary_structures_sql))
+                conn.commit()
+                print("  ✅ Salary structures table created successfully")
+            except Exception as e:
+                print(f"  ⚠️  Warning: Could not create salary_structures table: {str(e)}")
+        else:
+            print("\n⏭️  Salary structures table already exists")
         
         print(f"\n✨ Migration completed! Added {added_count} columns.")
         return True
