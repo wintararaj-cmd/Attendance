@@ -29,11 +29,17 @@ except ImportError:
     DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./attendance.db")
     print(f"⚠️ Using fallback database URL")
 
+# Ensure SQLAlchemy compatibility (postgres:// -> postgresql://)
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    print(f"🔧 Fixed database URL for SQLAlchemy compatibility")
+
 def run_migration():
     """Run database migration to add missing columns and tables"""
     print("🔄 Starting database migration...")
     db_display = DATABASE_URL.split('@')[1] if '@' in DATABASE_URL else DATABASE_URL.split('://')[1] if '://' in DATABASE_URL else 'unknown'
     print(f"📊 Database: {db_display}")
+
     
     engine = create_engine(DATABASE_URL)
     inspector = inspect(engine)
