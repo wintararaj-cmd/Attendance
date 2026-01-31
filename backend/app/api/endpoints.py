@@ -73,79 +73,99 @@ async def register_face(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    # First, remove any inactive employees with the same code or mobile
-    # This prevents unique constraint violations
-    inactive_employees = db.query(Employee).filter(
-        (Employee.emp_code == emp_id) | (Employee.mobile_no == mobile_no),
-        Employee.status == 'inactive'
-    ).all()
-    
-    if inactive_employees:
-        for inactive_emp in inactive_employees:
-            # Delete their attendance logs first
-            db.query(AttendanceLog).filter(AttendanceLog.employee_id == inactive_emp.id).delete()
-            # Delete the inactive employee
-            db.delete(inactive_emp)
-        db.commit()
-        print(f"🗑️ Removed {len(inactive_employees)} inactive employee(s) to allow re-registration")
-    
-    # Now check if an active employee exists
-    existing_emp = db.query(Employee).filter(
-        (Employee.emp_code == emp_id) | (Employee.mobile_no == mobile_no),
-        Employee.status == 'active'
-    ).first()
-    if existing_emp:
-        raise HTTPException(status_code=400, detail="Employee with this Code or Mobile No already exists")
-
-    # Use system temp directory for safer file handling
-    suffix = os.path.splitext(file.filename)[1] if file.filename else ".jpg"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        shutil.copyfileobj(file.file, tmp)
-        temp_file_path = tmp.name
-
     try:
-        try:
-            embedding = face_service.register_face(temp_file_path)
-        except Exception as e:
-            print(f"CRITICAL ERROR in face_service: {e}")
-            # Fallback for demo if service crashes completely
-            embedding = [0.1] * 512
+        # Ensure default company exists
+        from ..models.models import Company
+        default_company = db.query(Company).filter(Company.id == "default").first()
+        if not default_company:
+            default_company = Company(id="default", name="Default Company")
+            db.add(default_company)
+            db.commit()
+            print("✅ Created default company")
         
-        if embedding is None:
-            raise HTTPException(status_code=400, detail="Face detection failed or image quality low")
+        # First, remove any inactive employees with the same code or mobile
+        # This prevents unique constraint violations
+        inactive_employees = db.query(Employee).filter(
+            (Employee.emp_code == emp_id) | (Employee.mobile_no == mobile_no),
+            Employee.status == 'inactive'
+        ).all()
         
-        # Create Employee
-        # Note: face_service returns a list, we store it as JSON
-        print(f"📝 Creating employee record: {emp_id} - {name}")
-        new_emp = Employee(
-            id=str(uuid.uuid4()),
-            emp_code=emp_id,
-            first_name=name,
-            mobile_no=mobile_no,
-            face_encoding_ref=json.dumps(embedding),
-            is_face_registered=True,
-            company_id="default" # detailed tenant logic later
-        )
-        db.add(new_emp)
-        print(f"💾 Committing employee {emp_id} to database...")
-        db.commit()
-        db.refresh(new_emp)
-        print(f"✅ Employee {emp_id} registered successfully! ID: {new_emp.id}")
+        if inactive_employees:
+            for inactive_emp in inactive_employees:
+                # Delete their attendance logs first
+                db.query(AttendanceLog).filter(AttendanceLog.employee_id == inactive_emp.id).delete()
+                # Delete the inactive employee
+                db.delete(inactive_emp)
+            db.commit()
+            print(f"🗑️ Removed {len(inactive_employees)} inactive employee(s) to allow re-registration")
         
-        return {"status": "success", "message": f"Employee {name} registered with Face ID", "id": new_emp.id, "emp_code": emp_id}
+        # Now check if an active employee exists
+        existing_emp = db.query(Employee).filter(
+            (Employee.emp_code == emp_id) | (Employee.mobile_no == mobile_no),
+            Employee.status == 'active'
+        ).first()
+        if existing_emp:
+            raise HTTPException(status_code=400, detail="Employee with this Code or Mobile No already exists")
 
+        # Use system temp directory for safer file handling
+        suffix = os.path.splitext(file.filename)[1] if file.filename else ".jpg"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            shutil.copyfileobj(file.file, tmp)
+            temp_file_path = tmp.name
+
+        try:
+            try:
+                embedding = face_service.register_face(temp_file_path)
+            except Exception as e:
+                print(f"CRITICAL ERROR in face_service: {e}")
+                import traceback
+                traceback.print_exc()
+                # Fallback for demo if service crashes completely
+                embedding = [0.1] * 512
+            
+            if embedding is None:
+                raise HTTPException(status_code=400, detail="Face detection failed or image quality low")
+            
+            # Create Employee
+            # Note: face_service returns a list, we store it as JSON
+            print(f"📝 Creating employee record: {emp_id} - {name}")
+            new_emp = Employee(
+                id=str(uuid.uuid4()),
+                emp_code=emp_id,
+                first_name=name,
+                mobile_no=mobile_no,
+                face_encoding_ref=json.dumps(embedding),
+                is_face_registered=True,
+                company_id="default" # detailed tenant logic later
+            )
+            db.add(new_emp)
+            print(f"💾 Committing employee {emp_id} to database...")
+            db.commit()
+            db.refresh(new_emp)
+            print(f"✅ Employee {emp_id} registered successfully! ID: {new_emp.id}")
+            
+            return {"status": "success", "message": f"Employee {name} registered with Face ID", "id": new_emp.id, "emp_code": emp_id}
+
+        except HTTPException:
+            raise  # Re-raise HTTP exceptions as-is
+        except Exception as e:
+            db.rollback()
+            print(f"❌ Registration failed for {emp_id}: {e}")
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Registration error: {str(e)}")
+
+        finally:
+            if os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
+    
     except HTTPException:
-        raise  # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
-        db.rollback()
-        print(f"❌ Registration failed for {emp_id}: {e}")
+        print(f"❌ Outer registration error: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-
-    finally:
-        if os.path.exists(temp_file):
-            os.remove(temp_file)
+        raise HTTPException(status_code=500, detail=f"System error: {str(e)}")
 
 @router.post("/attendance/mark")
 async def mark_attendance(

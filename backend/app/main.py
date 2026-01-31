@@ -20,6 +20,15 @@ models.Base.metadata.create_all(bind=engine)
 def init_data():
     db = SessionLocal()
     try:
+        # Ensure default company exists
+        from .models.models import Company
+        default_company = db.query(Company).filter(Company.id == "default").first()
+        if not default_company:
+            default_company = Company(id="default", name="Default Company")
+            db.add(default_company)
+            db.commit()
+            print("✅ Default company created.")
+        
         # Create default admin if not exists
         username = "admin"
         user = db.query(AdminUser).filter(AdminUser.username == username).first()
