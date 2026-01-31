@@ -25,11 +25,25 @@ MODEL_NAME = "VGG-Face"
 class FaceRecognitionService:
     def __init__(self):
         # Force mock mode if dependencies are missing
-        self.mock_mode = True 
+        self.mock_mode = False
+        self.init_error = None
         
         if cv2 is None or np is None:
-            print("Core dependencies (cv2, numpy) missing. Face service disabled.")
+            self.init_error = "Core dependencies (cv2, numpy) missing."
+            print(self.init_error)
             self.mock_mode = True
+        
+        if not DeepFace:
+             self.init_error = "DeepFace library not loaded."
+             self.mock_mode = True
+
+    def get_status(self):
+        return {
+            "mock_mode": self.mock_mode,
+            "error": self.init_error,
+            "backend": "DeepFace" if DeepFace else "Mock",
+            "model": MODEL_NAME
+        }
             
         # Try a dummy call to check if model works/weights are present only if not already mocked
         # But we force mocked for now based on user issues

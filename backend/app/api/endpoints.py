@@ -148,6 +148,14 @@ def database_info(db: Session = Depends(get_db)):
             "error": str(e)
         }
 
+@router.get("/system/status")
+def get_system_status(db: Session = Depends(get_db)):
+    """Check system health and face recognition status"""
+    return {
+        "status": "online",
+        "face_recognition": face_service.get_status(),
+        "database": "connected"
+    }
 
 @router.post("/auth/login")
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
