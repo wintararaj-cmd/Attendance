@@ -267,13 +267,30 @@ async def register_face(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    # Check if employee already exists by code or mobile (only active employees)
+    # First, remove any inactive employees with the same code or mobile
+    # This prevents unique constraint violations
+    inactive_employees = db.query(Employee).filter(
+        (Employee.emp_code == emp_id) | (Employee.mobile_no == mobile_no),
+        Employee.status == 'inactive'
+    ).all()
+    
+    if inactive_employees:
+        for inactive_emp in inactive_employees:
+            # Delete their attendance logs first
+            db.query(AttendanceLog).filter(AttendanceLog.employee_id == inactive_emp.id).delete()
+            # Delete the inactive employee
+            db.delete(inactive_emp)
+        db.commit()
+        print(f"🗑️ Removed {len(inactive_employees)} inactive employee(s) to allow re-registration")
+    
+    # Now check if an active employee exists
     existing_emp = db.query(Employee).filter(
         (Employee.emp_code == emp_id) | (Employee.mobile_no == mobile_no),
         Employee.status == 'active'
     ).first()
     if existing_emp:
         raise HTTPException(status_code=400, detail="Employee with this Code or Mobile No already exists")
+
 
     temp_file = f"temp_{file.filename}"
     try:
