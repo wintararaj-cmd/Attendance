@@ -1116,3 +1116,51 @@ def get_department_employees(dept_id: str, db: Session = Depends(get_db)):
         "mobile_no": emp.mobile_no
     } for emp in employees]
 
+@router.delete("/admin/cleanup/employees")
+async def delete_all_employees(
+    current_user: AdminUser = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    DANGER: Permanently delete ALL employee data
+    This includes: employees, attendance logs, and salary structures
+    Only superadmin can perform this action
+    """
+    # Check if user is superadmin
+    if current_user.role != "superadmin":
+        raise HTTPException(
+            status_code=403, 
+            detail="Only superadmin can delete all employee data"
+        )
+    
+    try:
+        # Count records before deletion
+        attendance_count = db.query(AttendanceLog).count()
+        salary_count = db.query(SalaryStructure).count()
+        employee_count = db.query(Employee).count()
+        
+        # Delete all attendance logs
+        db.query(AttendanceLog).delete()
+        
+        # Delete all salary structures
+        db.query(SalaryStructure).delete()
+        
+        # Delete all employees
+        db.query(Employee).delete()
+        
+        # Commit the changes
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": "All employee data permanently deleted",
+            "deleted": {
+                "employees": employee_count,
+                "salary_structures": salary_count,
+                "attendance_logs": attendance_count
+            }
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete data: {str(e)}")
+
