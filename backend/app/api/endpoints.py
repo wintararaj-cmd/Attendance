@@ -342,7 +342,7 @@ async def mark_attendance(
                 print(f"⚠️ Attendance already marked for {matched_emp.emp_code} today at {check_in_ist}")
                 return {
                     "status": "failed",
-                    "reason": f"Attendance already marked today at {check_in_ist.strftime('%I:%M %p')}"
+                    "reason": f"Attendance already marked for {matched_emp.first_name} ({matched_emp.emp_code}) at {check_in_ist.strftime('%I:%M %p')}"
                 }
             
             # Log Attendance
@@ -511,7 +511,7 @@ async def mark_checkout(
             if not existing_log:
                 return {
                     "status": "failed",
-                    "reason": "No check-in found for today. Please check-in first."
+                    "reason": f"No check-in found for {matched_emp.first_name} ({matched_emp.emp_code}) today. Please check-in first."
                 }
             
             
