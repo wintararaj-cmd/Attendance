@@ -40,3 +40,21 @@ def read_root():
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    error_details = traceback.format_exc()
+    print(f"🔥 GLOBAL 500 ERROR: {str(exc)}\n{error_details}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error", "error": str(exc)},
+        headers={
+            "Access-Control-Allow-Origin": "*", # Allow all for errors to ensure visibility
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*",
+        },
+    )

@@ -28,9 +28,14 @@ MODEL_NAME = "VGG-Face"
 
 class FaceRecognitionService:
     def __init__(self):
-        # Force mock mode if dependencies are missing
+        # Force mock mode if dependencies are missing OR env var is set
         self.mock_mode = False
         self.init_error = None
+        
+        if os.getenv("FORCE_MOCK_MODE", "false").lower() == "true":
+             self.mock_mode = True
+             self.init_error = "Mock Mode forced by Environment Variable."
+             print("⚠️ MOCK MODE ENABLED via FORCE_MOCK_MODE env var")
         
         if cv2 is None or np is None:
             self.init_error = "Core dependencies (cv2, numpy) missing."
