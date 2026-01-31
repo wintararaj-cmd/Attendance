@@ -8,9 +8,33 @@ app = FastAPI(
 )
 
 # Initialize Database
-from .core.database import engine
+# Initialize Database
+from .core.database import engine, SessionLocal
 from .models import models
+from .models.models import AdminUser
+from .services.auth import auth_service
+
 models.Base.metadata.create_all(bind=engine)
+
+@app.on_event("startup")
+def init_data():
+    db = SessionLocal()
+    try:
+        # Create default admin if not exists
+        username = "admin"
+        user = db.query(AdminUser).filter(AdminUser.username == username).first()
+        if not user:
+            print(f"🚀 Creating default admin user: {username}")
+            try:
+                hashed_password = auth_service.get_password_hash("password123")
+                new_user = AdminUser(username=username, password_hash=hashed_password, role="superadmin")
+                db.add(new_user)
+                db.commit()
+                print("✅ Default admin created.")
+            except Exception as e:
+                print(f"❌ Failed to create admin: {e}")
+    finally:
+        db.close()
 
 # CORS Configuration
 app.add_middleware(
