@@ -182,6 +182,46 @@ def get_environment_info():
         "face_service_status": face_service.get_status()
     }
 
+@router.post("/debug/reset-employees")
+def reset_employee_data(
+    confirm: str = Body(..., description="Type 'RESET' to confirm"),
+    db: Session = Depends(get_db),
+    current_user: AdminUser = Depends(get_current_user)
+):
+    """
+    DANGER: Delete all employees and attendance logs
+    Use this to clear corrupted data from Mock Mode
+    """
+    if confirm != "RESET":
+        raise HTTPException(status_code=400, detail="Confirmation required. Send 'RESET' to proceed.")
+    
+    try:
+        # Count before deletion
+        emp_count = db.query(Employee).count()
+        log_count = db.query(AttendanceLog).count()
+        
+        # Delete all attendance logs first (foreign key constraint)
+        db.query(AttendanceLog).delete()
+        
+        # Delete all employees
+        db.query(Employee).delete()
+        
+        db.commit()
+        
+        return {
+            "status": "success",
+            "message": "All employee data cleared",
+            "deleted": {
+                "employees": emp_count,
+                "attendance_logs": log_count
+            },
+            "note": "You can now re-register employees with the real AI system"
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Reset failed: {str(e)}")
+
+
 @router.post("/auth/login")
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(AdminUser).filter(AdminUser.username == form_data.username).first()
