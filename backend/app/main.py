@@ -17,12 +17,13 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://t3sol.in",
+        "https://www.t3sol.in",
         "https://terminal.t3sol.in",
         "https://api.t3sol.in",
         "https://backend.140.245.242.116.sslip.io",
         "http://localhost:3000",
         "http://localhost:5173",
-        "*"  # Allow all origins as fallback
+        "http://localhost:8000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
