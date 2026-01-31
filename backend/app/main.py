@@ -49,11 +49,20 @@ async def global_exception_handler(request: Request, exc: Exception):
     import traceback
     error_details = traceback.format_exc()
     print(f"🔥 GLOBAL 500 ERROR: {str(exc)}\n{error_details}")
+    origin = request.headers.get("origin")
+    allow_origin = origin if origin in [
+        "https://t3sol.in",
+        "https://www.t3sol.in",
+        "https://terminal.t3sol.in",
+        "http://localhost:3000", 
+        "http://localhost:5173"
+    ] else "*"
+
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal Server Error", "error": str(exc)},
         headers={
-            "Access-Control-Allow-Origin": "*", # Allow all for errors to ensure visibility
+            "Access-Control-Allow-Origin": allow_origin,
             "Access-Control-Allow-Methods": "*",
             "Access-Control-Allow-Headers": "*",
         },
