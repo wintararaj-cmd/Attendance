@@ -16,6 +16,7 @@ interface AttendanceLog {
 export default function AttendanceLogs() {
     const [logs, setLogs] = useState<AttendanceLog[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         fetchLogs();
@@ -23,11 +24,13 @@ export default function AttendanceLogs() {
 
     const fetchLogs = async () => {
         try {
+            setError(null);
             const res = await axios.get('/api/v1/attendance/logs');
             // Backend returns { logs: [...] }
             setLogs(res.data.logs || []);
-        } catch (err) {
+        } catch (err: any) {
             console.error("Failed to fetch logs", err);
+            setError(err.response?.data?.detail || err.message || "Failed to load logs");
         } finally {
             setLoading(false);
         }
@@ -45,6 +48,7 @@ export default function AttendanceLogs() {
     };
 
     if (loading) return <div className="p-4">Loading logs...</div>;
+    if (error) return <div className="p-4 text-red-600">Error: {error}</div>;
 
     return (
         <div>
