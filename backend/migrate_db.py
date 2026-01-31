@@ -1,6 +1,6 @@
 """
 Database Migration Script
-Adds missing columns to employees table and creates departments table
+Adds missing columns to employees table and creates all missing tables
 Works from root directory or backend directory (Coolify compatible)
 """
 import os
@@ -20,13 +20,20 @@ else:
 from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.exc import ProgrammingError
 
-# Get database URL from environment or use default
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/attendance_db")
+# Import database URL from app configuration
+try:
+    from app.core.database import DATABASE_URL
+    print(f"✅ Using app database configuration")
+except ImportError:
+    # Fallback to environment variable
+    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./attendance.db")
+    print(f"⚠️ Using fallback database URL")
 
 def run_migration():
-    """Run database migration to add missing columns"""
+    """Run database migration to add missing columns and tables"""
     print("🔄 Starting database migration...")
-    print(f"📊 Database URL: {DATABASE_URL.split('@')[1] if '@' in DATABASE_URL else 'localhost'}")
+    db_display = DATABASE_URL.split('@')[1] if '@' in DATABASE_URL else DATABASE_URL.split('://')[1] if '://' in DATABASE_URL else 'unknown'
+    print(f"📊 Database: {db_display}")
     
     engine = create_engine(DATABASE_URL)
     inspector = inspect(engine)
@@ -167,15 +174,26 @@ def run_migration():
 
 if __name__ == "__main__":
     try:
+        print("=" * 60)
+        print("🚀 ATTENDANCE SYSTEM - DATABASE MIGRATION")
+        print("=" * 60)
         success = run_migration()
         if success:
-            print("\n✅ Database migration successful!")
+            print("\n" + "=" * 60)
+            print("✅ DATABASE MIGRATION SUCCESSFUL!")
+            print("=" * 60)
             sys.exit(0)
         else:
-            print("\n❌ Database migration failed!")
+            print("\n" + "=" * 60)
+            print("❌ DATABASE MIGRATION FAILED!")
+            print("=" * 60)
             sys.exit(1)
     except Exception as e:
         print(f"\n❌ Migration error: {str(e)}")
         import traceback
+        print("\n📋 Full traceback:")
         traceback.print_exc()
+        print("\n" + "=" * 60)
+        print("⚠️  MIGRATION FAILED - Server will start anyway")
+        print("=" * 60)
         sys.exit(1)
