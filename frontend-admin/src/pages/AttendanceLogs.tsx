@@ -66,7 +66,7 @@ export default function AttendanceLogs() {
                                 <th>Check In</th>
                                 <th>Check Out</th>
                                 <th>Status</th>
-                                <th>AI Confidence</th>
+                                <th>FACE MATCH PERCENTAGE</th>
                             </tr>
                         </thead>
                         <tbody>
