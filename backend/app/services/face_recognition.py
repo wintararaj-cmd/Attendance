@@ -14,9 +14,13 @@ except ImportError as e:
 
 try:
     from deepface import DeepFace
-except Exception:
+    deepface_error = None
+except Exception as e:
     DeepFace = None
-    print("DeepFace not found or failed to load. specific imports might be missing.")
+    deepface_error = str(e)
+    print(f"DeepFace failed to load: {e}")
+    import traceback
+    traceback.print_exc()
 
 # Configuration
 THRESHOLD = 0.40
@@ -41,8 +45,15 @@ class FaceRecognitionService:
         return {
             "mock_mode": self.mock_mode,
             "error": self.init_error,
+            "deepface_import_error": deepface_error if not DeepFace else None,
             "backend": "DeepFace" if DeepFace else "Mock",
-            "model": MODEL_NAME
+            "model": MODEL_NAME,
+            "dependencies": {
+                "cv2": cv2 is not None,
+                "numpy": np is not None,
+                "scipy": cosine is not None,
+                "deepface": DeepFace is not None
+            }
         }
             
         # Try a dummy call to check if model works/weights are present only if not already mocked

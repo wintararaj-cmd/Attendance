@@ -157,6 +157,31 @@ def get_system_status(db: Session = Depends(get_db)):
         "database": "connected"
     }
 
+@router.get("/debug/environment")
+def get_environment_info():
+    """Debug endpoint to check Python environment and packages"""
+    import sys
+    import subprocess
+    
+    # Get installed packages
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "list", "--format=json"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        packages = result.stdout if result.returncode == 0 else "Failed to get packages"
+    except Exception as e:
+        packages = f"Error: {str(e)}"
+    
+    return {
+        "python_version": sys.version,
+        "python_executable": sys.executable,
+        "installed_packages": packages,
+        "face_service_status": face_service.get_status()
+    }
+
 @router.post("/auth/login")
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(AdminUser).filter(AdminUser.username == form_data.username).first()
