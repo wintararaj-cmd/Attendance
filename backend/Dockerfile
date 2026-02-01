@@ -13,16 +13,16 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
-COPY requirements-prod.txt requirements.txt ./
+COPY requirements.txt .
 
-# Install Python dependencies (production-optimized, no heavy ML libs)
-RUN pip install --no-cache-dir -r requirements-prod.txt
+# Install Python dependencies (includes DeepFace for real face recognition)
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
 
-# Force mock mode for face recognition (no heavy ML dependencies in production)
-ENV FORCE_MOCK_MODE=true
+# Enable real face recognition (comment out to use mock mode)
+# ENV FORCE_MOCK_MODE=true
 
 # Expose port
 EXPOSE 8000
