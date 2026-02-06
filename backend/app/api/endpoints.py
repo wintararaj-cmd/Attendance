@@ -79,6 +79,49 @@ async def login_for_access_token(
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
+@router.get("/debug/salary-schema")
+def check_salary_schema(db: Session = Depends(get_db)):
+    """Diagnostic endpoint to check salary_structures table schema"""
+    from sqlalchemy import inspect
+    
+    inspector = inspect(engine)
+    
+    if 'salary_structures' not in inspector.get_table_names():
+        return {
+            "status": "error",
+            "message": "salary_structures table does not exist",
+            "tables": inspector.get_table_names()
+        }
+    
+    columns = inspector.get_columns('salary_structures')
+    column_names = [col['name'] for col in columns]
+    
+    required_columns = [
+        'basic_salary', 'hra', 'conveyance_allowance', 'medical_allowance',
+        'special_allowance', 'education_allowance', 'other_allowance',
+        'pf_employee', 'pf_employer', 'esi_employee', 'esi_employer',
+        'professional_tax', 'tds', 'bonus', 'incentive',
+        'is_pf_applicable', 'is_esi_applicable'
+    ]
+    
+    missing = [col for col in required_columns if col not in column_names]
+    
+    # Count records
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        result = conn.execute(text("SELECT COUNT(*) FROM salary_structures"))
+        count = result.scalar()
+    
+    return {
+        "status": "ok" if not missing else "incomplete",
+        "table_exists": True,
+        "total_columns": len(columns),
+        "columns": column_names,
+        "missing_columns": missing,
+        "total_records": count,
+        "message": "All columns present" if not missing else f"{len(missing)} columns missing - run migration"
+    }
+
 # ... (rest of the file)
 
 @router.post("/attendance/register")
