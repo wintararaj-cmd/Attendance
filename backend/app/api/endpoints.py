@@ -1065,11 +1065,18 @@ def update_employee_salary(
     data: dict = Body(...),
     db: Session = Depends(get_db)
 ):
+    import traceback
     try:
+        logger.info(f"Updating salary for employee {emp_id}")
+        logger.info(f"Received data: {data}")
+        
         sal = db.query(SalaryStructure).filter(SalaryStructure.employee_id == emp_id).first()
         if not sal:
+            logger.info(f"Creating new salary structure for {emp_id}")
             sal = SalaryStructure(id=str(uuid.uuid4()), employee_id=emp_id)
             db.add(sal)
+        else:
+            logger.info(f"Updating existing salary structure for {emp_id}")
         
         # Update all salary components
         sal.basic_salary = data.get("basic_salary", 0)
@@ -1093,12 +1100,18 @@ def update_employee_salary(
         sal.is_pf_applicable = data.get("is_pf_applicable", True)
         sal.is_esi_applicable = data.get("is_esi_applicable", False)
         
+        logger.info("Committing salary structure to database...")
         db.commit()
+        logger.info("✅ Salary structure saved successfully")
         return {"status": "success", "message": "Salary structure updated"}
     
     except Exception as e:
         db.rollback()
         error_msg = str(e)
+        error_trace = traceback.format_exc()
+        
+        logger.error(f"❌ Error saving salary structure: {error_msg}")
+        logger.error(f"Full traceback:\n{error_trace}")
         
         # Check if it's a column missing error
         if "column" in error_msg.lower() and "does not exist" in error_msg.lower():
@@ -1108,6 +1121,7 @@ def update_employee_salary(
                     "status": "error",
                     "message": "Database schema is outdated. Migration needs to run.",
                     "detail": error_msg,
+                    "traceback": error_trace,
                     "action": "Contact administrator to run database migration"
                 }
             )
@@ -1118,7 +1132,8 @@ def update_employee_salary(
             content={
                 "status": "error",
                 "message": "Failed to save salary structure",
-                "detail": error_msg
+                "detail": error_msg,
+                "traceback": error_trace
             }
         )
 
