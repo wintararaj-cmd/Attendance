@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Database Migration Script
 Adds missing columns to employees table and creates all missing tables
@@ -5,6 +6,12 @@ Works from root directory or backend directory (Coolify compatible)
 """
 import os
 import sys
+import io
+
+# Set UTF-8 encoding for Windows console
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 # Add backend directory to path if running from root
 current_dir = os.path.dirname(os.path.abspath(__file__))
