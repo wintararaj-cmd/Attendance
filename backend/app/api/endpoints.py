@@ -122,6 +122,74 @@ def check_salary_schema(db: Session = Depends(get_db)):
         "message": "All columns present" if not missing else f"{len(missing)} columns missing - run migration"
     }
 
+@router.post("/debug/fix-salary-schema")
+def fix_salary_schema(db: Session = Depends(get_db)):
+    """Add missing columns to salary_structures table"""
+    from sqlalchemy import inspect, text
+    
+    try:
+        inspector = inspect(engine)
+        
+        if 'salary_structures' not in inspector.get_table_names():
+            return JSONResponse(
+                status_code=400,
+                content={"status": "error", "message": "salary_structures table does not exist"}
+            )
+        
+        columns = inspector.get_columns('salary_structures')
+        column_names = [col['name'] for col in columns]
+        
+        # Define all required columns with their SQL types
+        required_columns = {
+            'special_allowance': 'NUMERIC(12, 2) DEFAULT 0.0',
+            'professional_tax': 'NUMERIC(12, 2) DEFAULT 0.0',
+            'hra': 'NUMERIC(12, 2) DEFAULT 0.0',
+            'conveyance_allowance': 'NUMERIC(12, 2) DEFAULT 0.0',
+            'medical_allowance': 'NUMERIC(12, 2) DEFAULT 0.0',
+            'education_allowance': 'NUMERIC(12, 2) DEFAULT 0.0',
+            'other_allowance': 'NUMERIC(12, 2) DEFAULT 0.0',
+            'pf_employee': 'NUMERIC(12, 2) DEFAULT 0.0',
+            'pf_employer': 'NUMERIC(12, 2) DEFAULT 0.0',
+            'esi_employee': 'NUMERIC(12, 2) DEFAULT 0.0',
+            'esi_employer': 'NUMERIC(12, 2) DEFAULT 0.0',
+            'tds': 'NUMERIC(12, 2) DEFAULT 0.0',
+            'bonus': 'NUMERIC(12, 2) DEFAULT 0.0',
+            'incentive': 'NUMERIC(12, 2) DEFAULT 0.0',
+            'is_pf_applicable': 'BOOLEAN DEFAULT TRUE',
+            'is_esi_applicable': 'BOOLEAN DEFAULT FALSE'
+        }
+        
+        added = []
+        skipped = []
+        errors = []
+        
+        with engine.connect() as conn:
+            for col_name, col_type in required_columns.items():
+                if col_name not in column_names:
+                    try:
+                        sql = f"ALTER TABLE salary_structures ADD COLUMN {col_name} {col_type}"
+                        conn.execute(text(sql))
+                        conn.commit()
+                        added.append(col_name)
+                    except Exception as e:
+                        errors.append({"column": col_name, "error": str(e)})
+                else:
+                    skipped.append(col_name)
+        
+        return {
+            "status": "success" if not errors else "partial",
+            "added_columns": added,
+            "skipped_columns": skipped,
+            "errors": errors,
+            "message": f"Added {len(added)} columns, skipped {len(skipped)} existing columns"
+        }
+    
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"status": "error", "message": str(e)}
+        )
+
 # ... (rest of the file)
 
 @router.post("/attendance/register")
