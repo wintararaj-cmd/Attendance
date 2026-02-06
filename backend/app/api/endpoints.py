@@ -997,35 +997,62 @@ def update_employee_salary(
     data: dict = Body(...),
     db: Session = Depends(get_db)
 ):
-    sal = db.query(SalaryStructure).filter(SalaryStructure.employee_id == emp_id).first()
-    if not sal:
-        sal = SalaryStructure(id=str(uuid.uuid4()), employee_id=emp_id)
-        db.add(sal)
+    try:
+        sal = db.query(SalaryStructure).filter(SalaryStructure.employee_id == emp_id).first()
+        if not sal:
+            sal = SalaryStructure(id=str(uuid.uuid4()), employee_id=emp_id)
+            db.add(sal)
+        
+        # Update all salary components
+        sal.basic_salary = data.get("basic_salary", 0)
+        sal.hra = data.get("hra", 0)
+        sal.conveyance_allowance = data.get("conveyance_allowance", 0)
+        sal.medical_allowance = data.get("medical_allowance", 0)
+        sal.special_allowance = data.get("special_allowance", 0)
+        sal.education_allowance = data.get("education_allowance", 0)
+        sal.other_allowance = data.get("other_allowance", 0)
+        
+        sal.pf_employee = data.get("pf_employee", 0)
+        sal.pf_employer = data.get("pf_employer", 0)
+        sal.esi_employee = data.get("esi_employee", 0)
+        sal.esi_employer = data.get("esi_employer", 0)
+        sal.professional_tax = data.get("professional_tax", 0)
+        sal.tds = data.get("tds", 0)
+        
+        sal.bonus = data.get("bonus", 0)
+        sal.incentive = data.get("incentive", 0)
+        
+        sal.is_pf_applicable = data.get("is_pf_applicable", True)
+        sal.is_esi_applicable = data.get("is_esi_applicable", False)
+        
+        db.commit()
+        return {"status": "success", "message": "Salary structure updated"}
     
-    # Update all salary components
-    sal.basic_salary = data.get("basic_salary", 0)
-    sal.hra = data.get("hra", 0)
-    sal.conveyance_allowance = data.get("conveyance_allowance", 0)
-    sal.medical_allowance = data.get("medical_allowance", 0)
-    sal.special_allowance = data.get("special_allowance", 0)
-    sal.education_allowance = data.get("education_allowance", 0)
-    sal.other_allowance = data.get("other_allowance", 0)
-    
-    sal.pf_employee = data.get("pf_employee", 0)
-    sal.pf_employer = data.get("pf_employer", 0)
-    sal.esi_employee = data.get("esi_employee", 0)
-    sal.esi_employer = data.get("esi_employer", 0)
-    sal.professional_tax = data.get("professional_tax", 0)
-    sal.tds = data.get("tds", 0)
-    
-    sal.bonus = data.get("bonus", 0)
-    sal.incentive = data.get("incentive", 0)
-    
-    sal.is_pf_applicable = data.get("is_pf_applicable", True)
-    sal.is_esi_applicable = data.get("is_esi_applicable", False)
-    
-    db.commit()
-    return {"status": "success", "message": "Salary structure updated"}
+    except Exception as e:
+        db.rollback()
+        error_msg = str(e)
+        
+        # Check if it's a column missing error
+        if "column" in error_msg.lower() and "does not exist" in error_msg.lower():
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": "Database schema is outdated. Migration needs to run.",
+                    "detail": error_msg,
+                    "action": "Contact administrator to run database migration"
+                }
+            )
+        
+        # Generic error
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": "Failed to save salary structure",
+                "detail": error_msg
+            }
+        )
 
 @router.get("/payroll/payslip/{emp_id}/pdf")
 def download_payslip_pdf(emp_id: str, db: Session = Depends(get_db)):
