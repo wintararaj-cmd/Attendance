@@ -2,6 +2,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends, B
 from fastapi.responses import FileResponse, JSONResponse
 from typing import Optional, List
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 import shutil
 import os
 import json
@@ -22,6 +23,21 @@ from ..models import models
 from ..models.models import Employee, AttendanceLog, SalaryStructure, AdminUser, Department
 from jose import JWTError, jwt
 
+
+import logging
+import sys
+
+# Configure logging to file - Force Handler
+logger = logging.getLogger("api_endpoints")
+logger.setLevel(logging.INFO)
+
+# Avoid adding permissions if already exists, but ensure file handler
+if not any(isinstance(h, logging.FileHandler) for h in logger.handlers):
+    fh = logging.FileHandler('backend_debug_forced.log')
+    fh.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -297,63 +313,7 @@ async def mark_attendance(
         if os.path.exists(temp_file):
             os.remove(temp_file)
 
-@router.get("/attendance/logs")
-def get_attendance_logs(
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    employee_id: Optional[str] = None,
-    db: Session = Depends(get_db),
-    current_user: AdminUser = Depends(get_current_user)
-):
-    """Get attendance logs with optional filters"""
-    from sqlalchemy import desc
-    
-    query = db.query(AttendanceLog).join(Employee)
-    
-    if employee_id:
-        query = query.filter(AttendanceLog.employee_id == employee_id)
-    if start_date:
-        query = query.filter(AttendanceLog.date >= start_date)
-    if end_date:
-        query = query.filter(AttendanceLog.date <= end_date)
-    
-    logs = query.order_by(desc(AttendanceLog.date), desc(AttendanceLog.check_in)).limit(50).all()
-    
-    # IST timezone for display
-    IST = timezone(timedelta(hours=5, minutes=30))
-    
-    result = []
-    for log in logs:
-        emp = log.employee
-        # Convert times to IST - handle both timezone-aware and naive datetimes
-        if log.check_in:
-            if log.check_in.tzinfo is None:
-                check_in_ist = log.check_in.replace(tzinfo=timezone.utc).astimezone(IST)
-            else:
-                check_in_ist = log.check_in.astimezone(IST)
-        else:
-            check_in_ist = None
-            
-        if log.check_out:
-            if log.check_out.tzinfo is None:
-                check_out_ist = log.check_out.replace(tzinfo=timezone.utc).astimezone(IST)
-            else:
-                check_out_ist = log.check_out.astimezone(IST)
-        else:
-            check_out_ist = None
-        
-        result.append({
-            "id": log.id,
-            "date": log.date.isoformat(),
-            "employee_name": f"{emp.first_name} {emp.last_name or ''}".strip(),
-            "emp_code": emp.emp_code,
-            "check_in": check_in_ist.strftime("%I:%M %p") if check_in_ist else None,
-            "check_out": check_out_ist.strftime("%I:%M %p") if check_out_ist else None,
-            "status": log.status,
-            "confidence": float(log.confidence_score) if log.confidence_score else None
-        })
-    
-    return {"logs": result}
+
 
 @router.post("/attendance/checkout")
 async def mark_checkout(
@@ -768,23 +728,169 @@ def get_employee_payroll(
     }
 
 @router.get("/attendance/logs")
-def get_attendance_logs(db: Session = Depends(get_db)):
-    logs = db.query(AttendanceLog).join(Employee).order_by(AttendanceLog.check_in.desc()).limit(50).all()
+def get_attendance_logs(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    employee_id: Optional[str] = None,
+    search: Optional[str] = None,
+    db: Session = Depends(get_db),
+    # current_user: AdminUser = Depends(get_current_user)
+):
+    """Get attendance logs with optional filters"""
+    from sqlalchemy import desc
+    
+    query = db.query(AttendanceLog).join(Employee)
+    
+    logger.info(f"FILTER REQUEST - Search: '{search}', Start: {start_date}, End: {end_date}, EmpID: {employee_id}")
+    
+    if employee_id:
+        query = query.filter(AttendanceLog.employee_id == employee_id)
+    if search:
+        search_lower = search.lower()
+        logger.info(f"Applying search filter: {search_lower}")
+        from sqlalchemy import or_
+        query = query.filter(
+            or_(
+                func.lower(func.coalesce(Employee.first_name, '')).contains(search_lower),
+                func.lower(func.coalesce(Employee.last_name, '')).contains(search_lower),
+                func.lower(func.coalesce(Employee.emp_code, '')).contains(search_lower)
+            )
+        )
+    if start_date:
+        query = query.filter(AttendanceLog.date >= start_date)
+    if end_date:
+        query = query.filter(AttendanceLog.date <= end_date)
+    
+    logs = query.order_by(desc(AttendanceLog.date), desc(AttendanceLog.check_in)).limit(50).all()
+    
+    # IST timezone for display
+    IST = timezone(timedelta(hours=5, minutes=30))
     
     result = []
     for log in logs:
+        emp = log.employee
+        # Convert times to IST
+        if log.check_in:
+            if log.check_in.tzinfo is None:
+                check_in_ist = log.check_in.replace(tzinfo=timezone.utc).astimezone(IST)
+            else:
+                check_in_ist = log.check_in.astimezone(IST)
+        else:
+            check_in_ist = None
+            
+        if log.check_out:
+            if log.check_out.tzinfo is None:
+                check_out_ist = log.check_out.replace(tzinfo=timezone.utc).astimezone(IST)
+            else:
+                check_out_ist = log.check_out.astimezone(IST)
+        else:
+            check_out_ist = None
+        
         result.append({
             "id": log.id,
-            "employee_id": log.employee_id,
-            "employee_name": f"{log.employee.first_name} {log.employee.last_name or ''}",
-            "emp_code": log.employee.emp_code,
             "date": log.date.isoformat(),
-            "check_in": log.check_in.isoformat() if log.check_in else None,
-            "check_out": log.check_out.isoformat() if log.check_out else None,
+            "employee_name": f"{emp.first_name} {emp.last_name or ''}".strip(),
+            "emp_code": emp.emp_code,
+            "check_in": check_in_ist.strftime("%I:%M %p") if check_in_ist else None,
+            "check_out": check_out_ist.strftime("%I:%M %p") if check_out_ist else None,
             "status": log.status,
             "confidence": float(log.confidence_score) if log.confidence_score else None
         })
-    return result
+    
+    return {"logs": result}
+
+@router.get("/attendance/export")
+def export_attendance_logs(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    employee_id: Optional[str] = None,
+    search: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: AdminUser = Depends(get_current_user)
+):
+    """Export attendance logs to CSV"""
+    from sqlalchemy import desc
+    import csv
+    from io import StringIO
+    from fastapi.responses import StreamingResponse
+    
+    query = db.query(AttendanceLog).join(Employee)
+    
+    logger.info(f"EXPORT REQUEST - Search: '{search}', Start: {start_date}, End: {end_date}, EmpID: {employee_id}")
+    
+    try:
+        if employee_id:
+            query = query.filter(AttendanceLog.employee_id == employee_id)
+        if search:
+            search_lower = search.lower()
+            from sqlalchemy import or_
+            query = query.filter(
+                or_(
+                    func.lower(func.coalesce(Employee.first_name, '')).contains(search_lower),
+                    func.lower(func.coalesce(Employee.last_name, '')).contains(search_lower),
+                    func.lower(func.coalesce(Employee.emp_code, '')).contains(search_lower)
+                )
+            )
+        if start_date:
+            query = query.filter(AttendanceLog.date >= start_date)
+        if end_date:
+            query = query.filter(AttendanceLog.date <= end_date)
+        
+        # No limit for export, but maybe reasonable cap?
+        logs = query.order_by(desc(AttendanceLog.date), desc(AttendanceLog.check_in)).all()
+        
+        IST = timezone(timedelta(hours=5, minutes=30))
+        
+        output = StringIO()
+        writer = csv.writer(output)
+        
+        # Header
+        writer.writerow(['Date', 'Employee Name', 'Employee Code', 'Department', 'Check In', 'Check Out', 'Status', 'Confidence Score'])
+        
+        for log in logs:
+            emp = log.employee
+            
+            if log.check_in:
+                if log.check_in.tzinfo is None:
+                    check_in_ist = log.check_in.replace(tzinfo=timezone.utc).astimezone(IST)
+                else:
+                    check_in_ist = log.check_in.astimezone(IST)
+            else:
+                check_in_ist = None
+                
+            if log.check_out:
+                if log.check_out.tzinfo is None:
+                    check_out_ist = log.check_out.replace(tzinfo=timezone.utc).astimezone(IST)
+                else:
+                    check_out_ist = log.check_out.astimezone(IST)
+            else:
+                check_out_ist = None
+                
+            writer.writerow([
+                log.date.isoformat(),
+                f"{emp.first_name} {emp.last_name or ''}".strip(),
+                emp.emp_code,
+                getattr(emp, 'department', ''),
+                check_in_ist.strftime("%I:%M %p") if check_in_ist else '',
+                check_out_ist.strftime("%I:%M %p") if check_out_ist else '',
+                log.status,
+                f"{float(log.confidence_score):.2f}" if log.confidence_score else ''
+            ])
+        
+        output.seek(0)
+        
+        response = StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv"
+        )
+        response.headers["Content-Disposition"] = "attachment; filename=attendance_logs.csv"
+        return response
+
+    except Exception as e:
+        logger.error(f"EXPORT ERROR: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
 
 @router.get("/employees/{emp_id}/salary")
 def get_employee_salary_struct(emp_id: str, db: Session = Depends(get_db)):

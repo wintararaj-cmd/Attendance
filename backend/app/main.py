@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(
     title="Attendance & Payroll System API",
-    description="Backend API for Face Recognition Attendance and Payroll",
+    description="Backend API for Face Recognition Attendance and Payroll  ",
     version="1.0.0"
 )
 

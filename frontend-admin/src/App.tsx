@@ -13,7 +13,7 @@ import axios from 'axios';
 
 // Configure Axios base URL for production
 // Configure Axios base URL for production
-const apiUrl = import.meta.env.VITE_API_BASE_URL || 'https://api.t3sol.in';
+const apiUrl = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? '' : 'https://api.t3sol.in');
 console.log("Configured API URL:", apiUrl);
 
 if (apiUrl) {
@@ -33,6 +33,27 @@ function App() {
       delete axios.defaults.headers.common['Authorization'];
     }
   }, [token]);
+
+  // Handle 401 Unauthorized globally
+  useEffect(() => {
+    const interceptor = axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response?.status === 401) {
+          // Only clear token if we actually had one, to avoid loops if login fails
+          if (localStorage.getItem('admin_token')) {
+            console.log("Session expired or invalid. Logging out.");
+            setToken(null);
+          }
+        }
+        return Promise.reject(error);
+      }
+    );
+
+    return () => {
+      axios.interceptors.response.eject(interceptor);
+    };
+  }, []);
 
   if (!token) {
     return <Login onLogin={setToken} />;

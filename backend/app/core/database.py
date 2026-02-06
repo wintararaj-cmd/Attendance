@@ -3,7 +3,11 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
 
-# Default to SQLite for easy local setup, typically would come from env
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Default to SQLite if not specified, but prefer postgres if available in env
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./attendance.db")
 
 # Ensure SQLAlchemy compatibility (postgres:// -> postgresql://)
