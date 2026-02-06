@@ -175,7 +175,64 @@ def run_migration():
         else:
             print("\n⏭️  Salary structures table already exists")
         
-        print(f"\n✨ Migration completed! Added {added_count} columns.")
+        # Migrate salary_structures table to new schema
+        print("\n🔄 Updating salary_structures table...")
+        if 'salary_structures' in inspector.get_table_names():
+            salary_columns = [col['name'] for col in inspector.get_columns('salary_structures')]
+            
+            new_salary_columns = {
+                'hra': 'NUMERIC(12, 2) DEFAULT 0.0',
+                'conveyance_allowance': 'NUMERIC(12, 2) DEFAULT 0.0',
+                'medical_allowance': 'NUMERIC(12, 2) DEFAULT 0.0',
+                'education_allowance': 'NUMERIC(12, 2) DEFAULT 0.0',
+                'other_allowance': 'NUMERIC(12, 2) DEFAULT 0.0',
+                'pf_employee': 'NUMERIC(12, 2) DEFAULT 0.0',
+                'pf_employer': 'NUMERIC(12, 2) DEFAULT 0.0',
+                'esi_employee': 'NUMERIC(12, 2) DEFAULT 0.0',
+                'esi_employer': 'NUMERIC(12, 2) DEFAULT 0.0',
+                'tds': 'NUMERIC(12, 2) DEFAULT 0.0',
+                'bonus': 'NUMERIC(12, 2) DEFAULT 0.0',
+                'incentive': 'NUMERIC(12, 2) DEFAULT 0.0',
+                'is_pf_applicable': 'BOOLEAN DEFAULT TRUE',
+                'is_esi_applicable': 'BOOLEAN DEFAULT FALSE',
+                'created_at': 'TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP',
+                'updated_at': 'TIMESTAMP WITH TIME ZONE'
+            }
+            
+            salary_added = 0
+            for col_name, col_type in new_salary_columns.items():
+                if col_name not in salary_columns:
+                    try:
+                        sql = f"ALTER TABLE salary_structures ADD COLUMN {col_name} {col_type}"
+                        print(f"  ➕ Adding salary column: {col_name}")
+                        conn.execute(text(sql))
+                        conn.commit()
+                        salary_added += 1
+                    except ProgrammingError as e:
+                        print(f"  ⚠️ Warning: Could not add {col_name}: {str(e)}")
+                else:
+                    print(f"  ⏭️ Skipping: {col_name} (already exists)")
+            
+            # Migrate old column data
+            if 'hra_allowance' in salary_columns and 'hra' in [col['name'] for col in inspector.get_columns('salary_structures')]:
+                try:
+                    print("  🔄 Migrating hra_allowance to hra...")
+                    conn.execute(text("UPDATE salary_structures SET hra = hra_allowance WHERE hra_allowance IS NOT NULL AND hra = 0"))
+                    conn.commit()
+                except Exception as e:
+                    print(f"  ⚠️ Migration warning: {e}")
+            
+            if 'pf_deduction' in salary_columns and 'pf_employee' in [col['name'] for col in inspector.get_columns('salary_structures')]:
+                try:
+                    print("  🔄 Migrating pf_deduction to pf_employee...")
+                    conn.execute(text("UPDATE salary_structures SET pf_employee = pf_deduction WHERE pf_deduction IS NOT NULL AND pf_employee = 0"))
+                    conn.commit()
+                except Exception as e:
+                    print(f"  ⚠️ Migration warning: {e}")
+            
+            print(f"  ✨ Salary structure migration completed! Added {salary_added} columns.")
+        
+        print(f"\n✨ Migration completed! Added {added_count} employee columns.")
         return True
 
 if __name__ == "__main__":
