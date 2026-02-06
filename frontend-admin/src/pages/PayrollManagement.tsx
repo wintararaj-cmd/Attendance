@@ -36,10 +36,26 @@ interface PayrollData {
 
 interface SalaryStructure {
     basic_salary: number;
-    hra_allowance: number;
+    // Allowances
+    hra: number;
+    conveyance_allowance: number;
+    medical_allowance: number;
     special_allowance: number;
-    pf_deduction: number;
+    education_allowance: number;
+    other_allowance: number;
+    // Deductions
+    pf_employee: number;
+    pf_employer: number;
+    esi_employee: number;
+    esi_employer: number;
     professional_tax: number;
+    tds: number;
+    // Benefits
+    bonus: number;
+    incentive: number;
+    // Settings
+    is_pf_applicable: boolean;
+    is_esi_applicable: boolean;
 }
 
 export default function PayrollManagement() {
@@ -57,10 +73,22 @@ export default function PayrollManagement() {
     const [configEmpName, setConfigEmpName] = useState('');
     const [salaryForm, setSalaryForm] = useState<SalaryStructure>({
         basic_salary: 0,
-        hra_allowance: 0,
+        hra: 0,
+        conveyance_allowance: 0,
+        medical_allowance: 0,
         special_allowance: 0,
-        pf_deduction: 0,
-        professional_tax: 0
+        education_allowance: 0,
+        other_allowance: 0,
+        pf_employee: 0,
+        pf_employer: 0,
+        esi_employee: 0,
+        esi_employer: 0,
+        professional_tax: 0,
+        tds: 0,
+        bonus: 0,
+        incentive: 0,
+        is_pf_applicable: true,
+        is_esi_applicable: false
     });
 
     useEffect(() => {
@@ -123,10 +151,22 @@ export default function PayrollManagement() {
             // Set default values if no salary structure exists
             setSalaryForm({
                 basic_salary: 0,
-                hra_allowance: 0,
+                hra: 0,
+                conveyance_allowance: 0,
+                medical_allowance: 0,
                 special_allowance: 0,
-                pf_deduction: 0,
-                professional_tax: 0
+                education_allowance: 0,
+                other_allowance: 0,
+                pf_employee: 0,
+                pf_employer: 0,
+                esi_employee: 0,
+                esi_employer: 0,
+                professional_tax: 0,
+                tds: 0,
+                bonus: 0,
+                incentive: 0,
+                is_pf_applicable: true,
+                is_esi_applicable: false
             });
             setShowConfigModal(true);
         }
@@ -358,9 +398,9 @@ export default function PayrollManagement() {
                             <div>
                                 <h4 style={{ margin: '0 0 1rem 0', color: '#059669', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                     <TrendingUp size={18} />
-                                    Earnings
+                                    Earnings & Allowances
                                 </h4>
-                                <div style={{ display: 'grid', gap: '1rem' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                                     <div>
                                         <label style={labelStyle}>Basic Salary *</label>
                                         <input
@@ -372,13 +412,33 @@ export default function PayrollManagement() {
                                         />
                                     </div>
                                     <div>
-                                        <label style={labelStyle}>HRA Allowance</label>
+                                        <label style={labelStyle}>HRA</label>
                                         <input
                                             type="number"
                                             className="input"
-                                            value={salaryForm.hra_allowance}
-                                            onChange={e => setSalaryForm({ ...salaryForm, hra_allowance: Number(e.target.value) })}
+                                            value={salaryForm.hra}
+                                            onChange={e => setSalaryForm({ ...salaryForm, hra: Number(e.target.value) })}
                                             placeholder="e.g., 5000"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={labelStyle}>Conveyance Allowance</label>
+                                        <input
+                                            type="number"
+                                            className="input"
+                                            value={salaryForm.conveyance_allowance}
+                                            onChange={e => setSalaryForm({ ...salaryForm, conveyance_allowance: Number(e.target.value) })}
+                                            placeholder="e.g., 1600"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={labelStyle}>Medical Allowance</label>
+                                        <input
+                                            type="number"
+                                            className="input"
+                                            value={salaryForm.medical_allowance}
+                                            onChange={e => setSalaryForm({ ...salaryForm, medical_allowance: Number(e.target.value) })}
+                                            placeholder="e.g., 1250"
                                         />
                                     </div>
                                     <div>
@@ -391,6 +451,26 @@ export default function PayrollManagement() {
                                             placeholder="e.g., 3000"
                                         />
                                     </div>
+                                    <div>
+                                        <label style={labelStyle}>Education Allowance</label>
+                                        <input
+                                            type="number"
+                                            className="input"
+                                            value={salaryForm.education_allowance}
+                                            onChange={e => setSalaryForm({ ...salaryForm, education_allowance: Number(e.target.value) })}
+                                            placeholder="e.g., 100"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={labelStyle}>Other Allowance</label>
+                                        <input
+                                            type="number"
+                                            className="input"
+                                            value={salaryForm.other_allowance}
+                                            onChange={e => setSalaryForm({ ...salaryForm, other_allowance: Number(e.target.value) })}
+                                            placeholder="e.g., 500"
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
@@ -400,15 +480,45 @@ export default function PayrollManagement() {
                                     <DollarSign size={18} />
                                     Deductions
                                 </h4>
-                                <div style={{ display: 'grid', gap: '1rem' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                                     <div>
-                                        <label style={labelStyle}>PF Deduction</label>
+                                        <label style={labelStyle}>PF Employee (12%)</label>
                                         <input
                                             type="number"
                                             className="input"
-                                            value={salaryForm.pf_deduction}
-                                            onChange={e => setSalaryForm({ ...salaryForm, pf_deduction: Number(e.target.value) })}
+                                            value={salaryForm.pf_employee}
+                                            onChange={e => setSalaryForm({ ...salaryForm, pf_employee: Number(e.target.value) })}
                                             placeholder="e.g., 1800"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={labelStyle}>PF Employer (12%)</label>
+                                        <input
+                                            type="number"
+                                            className="input"
+                                            value={salaryForm.pf_employer}
+                                            onChange={e => setSalaryForm({ ...salaryForm, pf_employer: Number(e.target.value) })}
+                                            placeholder="e.g., 1800"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={labelStyle}>ESI Employee (0.75%)</label>
+                                        <input
+                                            type="number"
+                                            className="input"
+                                            value={salaryForm.esi_employee}
+                                            onChange={e => setSalaryForm({ ...salaryForm, esi_employee: Number(e.target.value) })}
+                                            placeholder="e.g., 150"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={labelStyle}>ESI Employer (3.25%)</label>
+                                        <input
+                                            type="number"
+                                            className="input"
+                                            value={salaryForm.esi_employer}
+                                            onChange={e => setSalaryForm({ ...salaryForm, esi_employer: Number(e.target.value) })}
+                                            placeholder="e.g., 650"
                                         />
                                     </div>
                                     <div>
@@ -421,6 +531,74 @@ export default function PayrollManagement() {
                                             placeholder="e.g., 200"
                                         />
                                     </div>
+                                    <div>
+                                        <label style={labelStyle}>TDS</label>
+                                        <input
+                                            type="number"
+                                            className="input"
+                                            value={salaryForm.tds}
+                                            onChange={e => setSalaryForm({ ...salaryForm, tds: Number(e.target.value) })}
+                                            placeholder="e.g., 500"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Benefits Section */}
+                            <div>
+                                <h4 style={{ margin: '0 0 1rem 0', color: '#2563eb', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <TrendingUp size={18} />
+                                    Benefits
+                                </h4>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                    <div>
+                                        <label style={labelStyle}>Bonus</label>
+                                        <input
+                                            type="number"
+                                            className="input"
+                                            value={salaryForm.bonus}
+                                            onChange={e => setSalaryForm({ ...salaryForm, bonus: Number(e.target.value) })}
+                                            placeholder="e.g., 2000"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={labelStyle}>Incentive</label>
+                                        <input
+                                            type="number"
+                                            className="input"
+                                            value={salaryForm.incentive}
+                                            onChange={e => setSalaryForm({ ...salaryForm, incentive: Number(e.target.value) })}
+                                            placeholder="e.g., 1000"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Settings Section */}
+                            <div>
+                                <h4 style={{ margin: '0 0 1rem 0', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <Settings size={18} />
+                                    Calculation Settings
+                                </h4>
+                                <div style={{ display: 'grid', gap: '0.75rem' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={salaryForm.is_pf_applicable}
+                                            onChange={e => setSalaryForm({ ...salaryForm, is_pf_applicable: e.target.checked })}
+                                            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                                        />
+                                        <span>PF Applicable</span>
+                                    </label>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={salaryForm.is_esi_applicable}
+                                            onChange={e => setSalaryForm({ ...salaryForm, is_esi_applicable: e.target.checked })}
+                                            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                                        />
+                                        <span>ESI Applicable</span>
+                                    </label>
                                 </div>
                             </div>
 
@@ -434,13 +612,26 @@ export default function PayrollManagement() {
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                                     <span style={{ color: 'var(--text-muted)' }}>Gross Salary:</span>
                                     <span style={{ fontWeight: 600 }}>
-                                        ₹{(salaryForm.basic_salary + salaryForm.hra_allowance + salaryForm.special_allowance).toLocaleString('en-IN')}
+                                        ₹{(
+                                            salaryForm.basic_salary +
+                                            salaryForm.hra +
+                                            salaryForm.conveyance_allowance +
+                                            salaryForm.medical_allowance +
+                                            salaryForm.special_allowance +
+                                            salaryForm.education_allowance +
+                                            salaryForm.other_allowance
+                                        ).toLocaleString('en-IN')}
                                     </span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                                     <span style={{ color: 'var(--text-muted)' }}>Total Deductions:</span>
                                     <span style={{ fontWeight: 600, color: '#dc2626' }}>
-                                        ₹{(salaryForm.pf_deduction + salaryForm.professional_tax).toLocaleString('en-IN')}
+                                        ₹{(
+                                            salaryForm.pf_employee +
+                                            salaryForm.esi_employee +
+                                            salaryForm.professional_tax +
+                                            salaryForm.tds
+                                        ).toLocaleString('en-IN')}
                                     </span>
                                 </div>
                                 <div style={{
@@ -452,7 +643,21 @@ export default function PayrollManagement() {
                                 }}>
                                     <span style={{ fontWeight: 600 }}>Net Salary:</span>
                                     <span style={{ fontWeight: 700, fontSize: '1.25rem', color: '#2563eb' }}>
-                                        ₹{(salaryForm.basic_salary + salaryForm.hra_allowance + salaryForm.special_allowance - salaryForm.pf_deduction - salaryForm.professional_tax).toLocaleString('en-IN')}
+                                        ₹{(
+                                            salaryForm.basic_salary +
+                                            salaryForm.hra +
+                                            salaryForm.conveyance_allowance +
+                                            salaryForm.medical_allowance +
+                                            salaryForm.special_allowance +
+                                            salaryForm.education_allowance +
+                                            salaryForm.other_allowance +
+                                            salaryForm.bonus +
+                                            salaryForm.incentive -
+                                            salaryForm.pf_employee -
+                                            salaryForm.esi_employee -
+                                            salaryForm.professional_tax -
+                                            salaryForm.tds
+                                        ).toLocaleString('en-IN')}
                                     </span>
                                 </div>
                             </div>
