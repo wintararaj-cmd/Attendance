@@ -100,14 +100,39 @@ class SalaryStructure(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     employee_id = Column(String, ForeignKey("employees.id"), unique=True)
     
+    # Basic Components
     basic_salary = Column(Numeric(12, 2), default=0.0)
-    hra_allowance = Column(Numeric(12, 2), default=0.0)
-    special_allowance = Column(Numeric(12, 2), default=0.0)
     
-    pf_deduction = Column(Numeric(12, 2), default=0.0)
+    # Allowances
+    hra = Column(Numeric(12, 2), default=0.0)  # House Rent Allowance
+    conveyance_allowance = Column(Numeric(12, 2), default=0.0)
+    medical_allowance = Column(Numeric(12, 2), default=0.0)
+    special_allowance = Column(Numeric(12, 2), default=0.0)
+    education_allowance = Column(Numeric(12, 2), default=0.0)
+    other_allowance = Column(Numeric(12, 2), default=0.0)
+    
+    # Deductions
+    pf_employee = Column(Numeric(12, 2), default=0.0)  # Employee PF Contribution
+    pf_employer = Column(Numeric(12, 2), default=0.0)  # Employer PF Contribution
+    esi_employee = Column(Numeric(12, 2), default=0.0)  # Employee ESI
+    esi_employer = Column(Numeric(12, 2), default=0.0)  # Employer ESI
     professional_tax = Column(Numeric(12, 2), default=0.0)
+    tds = Column(Numeric(12, 2), default=0.0)  # Tax Deducted at Source
+    
+    # Other Benefits
+    bonus = Column(Numeric(12, 2), default=0.0)
+    incentive = Column(Numeric(12, 2), default=0.0)
+    
+    # Calculation Settings
+    is_pf_applicable = Column(Boolean, default=True)
+    is_esi_applicable = Column(Boolean, default=False)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     employee = relationship("Employee", back_populates="salary_structure")
 
 # Update Employee relationship
 Employee.salary_structure = relationship("SalaryStructure", uselist=False, back_populates="employee")
+

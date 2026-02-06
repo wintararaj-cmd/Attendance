@@ -3,78 +3,138 @@ from decimal import Decimal
 class PayrollService:
     def calculate_net_salary(self, salary_structure: dict, attendance_summary: dict) -> dict:
         """
-        Calculate the payroll for a single employee based on structure and attendance.
-        All monetary inputs should be standard python numeric types, converted to Decimal internally.
+        Calculate comprehensive payroll for an employee based on Indian salary standards.
+        Includes: Basic, HRA, Allowances, PF, ESI, PT, TDS, LOP, Overtime
         """
         
-        # 1. Inputs & Safe Conversion
+        # 1. Extract Salary Components (Safe Conversion)
         try:
+            # Basic Components
             basic_salary = Decimal(str(salary_structure.get("basic_salary", 0)))
-            hra_pct = Decimal(str(salary_structure.get("hra_percentage", 40)))
-            da_pct = Decimal(str(salary_structure.get("da_percentage", 0)))
-            special_allowance = Decimal(str(salary_structure.get("special_allowance", 0)))
             
-            # Attendance
+            # Allowances
+            hra = Decimal(str(salary_structure.get("hra", 0)))
+            conveyance = Decimal(str(salary_structure.get("conveyance_allowance", 0)))
+            medical = Decimal(str(salary_structure.get("medical_allowance", 0)))
+            special = Decimal(str(salary_structure.get("special_allowance", 0)))
+            education = Decimal(str(salary_structure.get("education_allowance", 0)))
+            other = Decimal(str(salary_structure.get("other_allowance", 0)))
+            
+            # Benefits
+            bonus = Decimal(str(salary_structure.get("bonus", 0)))
+            incentive = Decimal(str(salary_structure.get("incentive", 0)))
+            
+            # Deduction Settings
+            is_pf_applicable = salary_structure.get("is_pf_applicable", True)
+            is_esi_applicable = salary_structure.get("is_esi_applicable", False)
+            
+            # Attendance Data
             total_days = Decimal(str(attendance_summary.get("total_working_days", 30)))
-            if total_days == 0: total_days = Decimal(30)
+            if total_days == 0:
+                total_days = Decimal(30)
             
-            unpaid_leaves = Decimal(str(attendance_summary.get("unpaid_leaves", 0)))
+            present_days = Decimal(str(attendance_summary.get("present_days", total_days)))
+            unpaid_leaves = total_days - present_days
             overtime_hours = Decimal(str(attendance_summary.get("overtime_hours", 0)))
+            
         except Exception as e:
             return {"error": f"Invalid input format: {e}"}
         
-        # 2. Earnings Calculation
-        hra = basic_salary * (hra_pct / 100)
-        da = basic_salary * (da_pct / 100)
+        # 2. Calculate Gross Salary (Standard)
+        gross_salary = (
+            basic_salary + hra + conveyance + medical + 
+            special + education + other
+        )
         
-        # Gross (Standard)
-        gross_standard = basic_salary + hra + da + special_allowance
+        # 3. Calculate Earnings
+        # Per day salary for LOP calculation
+        per_day_salary = gross_salary / total_days
         
-        # Loss of Pay Deduction
-        per_day_salary = gross_standard / total_days
+        # Loss of Pay (LOP) Deduction
         lop_deduction = per_day_salary * unpaid_leaves
         
-        # Overtime Pay (Approximation: 240 hours/month)
+        # Overtime Pay (1.5x hourly rate, assuming 8 hours/day, 30 days/month = 240 hours)
         hourly_rate = basic_salary / Decimal(240)
-        ot_pay = hourly_rate * Decimal(1.5) * overtime_hours
+        overtime_pay = hourly_rate * Decimal(1.5) * overtime_hours
         
-        # Actual Gross Earned
-        gross_earned = gross_standard - lop_deduction + ot_pay
-
-        # 3. Deductions
-        # PF: 12% of Basic
-        pf_employee = basic_salary * Decimal(0.12)
+        # Actual Gross Earned (after LOP, before deductions)
+        gross_earned = gross_salary - lop_deduction + overtime_pay + bonus + incentive
         
-        # ESI: 0.75% of Gross if Gross < 21k
+        # 4. Calculate Deductions
+        
+        # PF (Provident Fund) - 12% of Basic (both employee and employer)
+        # Only if Basic <= 15,000 (statutory limit) or if opted
+        pf_employee = Decimal(0)
+        pf_employer = Decimal(0)
+        if is_pf_applicable and basic_salary > 0:
+            pf_base = min(basic_salary, Decimal(15000))  # PF ceiling
+            pf_employee = pf_base * Decimal(0.12)
+            pf_employer = pf_base * Decimal(0.12)
+        
+        # ESI (Employee State Insurance) - Applicable if gross <= 21,000
+        # Employee: 0.75%, Employer: 3.25%
         esi_employee = Decimal(0)
-        if gross_earned < 21000:
-            esi_employee = gross_earned * Decimal(0.0075)
-            
-        # Professional Tax (Simplified)
-        prof_tax = Decimal(200) if gross_earned > 15000 else Decimal(0)
-
-        total_deductions = pf_employee + esi_employee + prof_tax
-
-        # 4. Net Pay
+        esi_employer = Decimal(0)
+        if is_esi_applicable or gross_salary <= 21000:
+            esi_employee = gross_salary * Decimal(0.0075)
+            esi_employer = gross_salary * Decimal(0.0325)
+        
+        # Professional Tax (PT) - State-specific, simplified calculation
+        # Maharashtra: Rs. 200/month if gross > 10,000
+        professional_tax = Decimal(0)
+        if gross_earned > 10000:
+            professional_tax = Decimal(200)
+        
+        # TDS (Tax Deducted at Source) - Simplified, can be customized
+        tds = Decimal(str(salary_structure.get("tds", 0)))
+        
+        # Total Deductions (Employee side only)
+        total_deductions = pf_employee + esi_employee + professional_tax + tds + lop_deduction
+        
+        # 5. Net Salary
         net_salary = gross_earned - total_deductions
         
+        # 6. Cost to Company (CTC) - Employer's total cost
+        ctc = gross_salary + pf_employer + esi_employer + bonus + incentive
+        
         return {
-            "earnings": {
-                "basic": round(basic_salary, 2),
-                "hra": round(hra, 2),
-                "da": round(da, 2),
-                "special": round(special_allowance, 2),
-                "overtime": round(ot_pay, 2),
-                "gross_earned": round(gross_earned, 2)
+            "payroll": {
+                "earnings": {
+                    "basic": float(round(basic_salary, 2)),
+                    "hra": float(round(hra, 2)),
+                    "conveyance": float(round(conveyance, 2)),
+                    "medical": float(round(medical, 2)),
+                    "special": float(round(special, 2)),
+                    "education": float(round(education, 2)),
+                    "other": float(round(other, 2)),
+                    "bonus": float(round(bonus, 2)),
+                    "incentive": float(round(incentive, 2)),
+                    "overtime": float(round(overtime_pay, 2)),
+                    "gross_salary": float(round(gross_salary, 2)),
+                    "gross_earned": float(round(gross_earned, 2))
+                },
+                "deductions": {
+                    "pf": float(round(pf_employee, 2)),
+                    "esi": float(round(esi_employee, 2)),
+                    "prof_tax": float(round(professional_tax, 2)),
+                    "tds": float(round(tds, 2)),
+                    "lop": float(round(lop_deduction, 2)),
+                    "total": float(round(total_deductions, 2))
+                },
+                "employer_contributions": {
+                    "pf": float(round(pf_employer, 2)),
+                    "esi": float(round(esi_employer, 2)),
+                    "total": float(round(pf_employer + esi_employer, 2))
+                },
+                "net_salary": float(round(net_salary, 2)),
+                "ctc": float(round(ctc, 2))
             },
-            "deductions": {
-                "pf": round(pf_employee, 2),
-                "esi": round(esi_employee, 2),
-                "prof_tax": round(prof_tax, 2),
-                "lop": round(lop_deduction, 2),
-                "total": round(total_deductions, 2)
-            },
-            "net_salary": round(net_salary, 2)
+            "attendance": {
+                "total_days": float(total_days),
+                "present_days": float(present_days),
+                "unpaid_leaves": float(unpaid_leaves),
+                "overtime_hours": float(overtime_hours)
+            }
         }
 
 payroll_service = PayrollService()

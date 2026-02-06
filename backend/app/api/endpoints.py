@@ -683,20 +683,32 @@ def get_employee_payroll(
     if not sal:
         # Default fallback
         salary_struct = {
-            "basic_salary": 15000, 
-            "hra_percentage": 0, 
-            "da_percentage": 0,
+            "basic_salary": 15000,
+            "hra": 0,
+            "conveyance_allowance": 0,
+            "medical_allowance": 0,
             "special_allowance": 0,
-            "pf_deduction": 0,
-            "professional_tax": 0
+            "education_allowance": 0,
+            "other_allowance": 0,
+            "bonus": 0,
+            "incentive": 0,
+            "is_pf_applicable": True,
+            "is_esi_applicable": False
         }
     else:
         salary_struct = {
-            "basic_salary": float(sal.basic_salary),
-            "hra_allowance": float(sal.hra_allowance),
-            "special_allowance": float(sal.special_allowance),
-            "pf_deduction": float(sal.pf_deduction),
-            "professional_tax": float(sal.professional_tax)
+            "basic_salary": float(sal.basic_salary) if sal.basic_salary else 0,
+            "hra": float(sal.hra) if sal.hra else 0,
+            "conveyance_allowance": float(sal.conveyance_allowance) if sal.conveyance_allowance else 0,
+            "medical_allowance": float(sal.medical_allowance) if sal.medical_allowance else 0,
+            "special_allowance": float(sal.special_allowance) if sal.special_allowance else 0,
+            "education_allowance": float(sal.education_allowance) if sal.education_allowance else 0,
+            "other_allowance": float(sal.other_allowance) if sal.other_allowance else 0,
+            "bonus": float(sal.bonus) if sal.bonus else 0,
+            "incentive": float(sal.incentive) if sal.incentive else 0,
+            "tds": float(sal.tds) if sal.tds else 0,
+            "is_pf_applicable": sal.is_pf_applicable if hasattr(sal, 'is_pf_applicable') else True,
+            "is_esi_applicable": sal.is_esi_applicable if hasattr(sal, 'is_esi_applicable') else False
         }
     
     # Calculate Attendance for Current Month
@@ -710,21 +722,21 @@ def get_employee_payroll(
         AttendanceLog.status == "present"
     ).count()
     
-    # Simple Logic: Assume 30 day month. Unpaid = 30 - Present.
+    # Simple Logic: Assume 30 day month
     attendance = {
         "total_working_days": 30,
-        "unpaid_leaves": max(0, 30 - present_days),
+        "present_days": present_days,
         "overtime_hours": 0
     }
     
-    net = payroll_service.calculate_net_salary(salary_struct, attendance)
+    result = payroll_service.calculate_net_salary(salary_struct, attendance)
     
     return {
         "employee_id": emp.id,
         "employee_name": f"{emp.first_name} {emp.last_name or ''}",
         "month": today.strftime("%B %Y"),
         "present_days": present_days,
-        "payroll": net
+        **result
     }
 
 @router.get("/attendance/logs")
@@ -898,12 +910,43 @@ def get_employee_salary_struct(emp_id: str, db: Session = Depends(get_db)):
     if not sal:
         return {
             "basic_salary": 0,
-            "hra_allowance": 0,
+            "hra": 0,
+            "conveyance_allowance": 0,
+            "medical_allowance": 0,
             "special_allowance": 0,
-            "pf_deduction": 0,
-            "professional_tax": 0
+            "education_allowance": 0,
+            "other_allowance": 0,
+            "pf_employee": 0,
+            "pf_employer": 0,
+            "esi_employee": 0,
+            "esi_employer": 0,
+            "professional_tax": 0,
+            "tds": 0,
+            "bonus": 0,
+            "incentive": 0,
+            "is_pf_applicable": True,
+            "is_esi_applicable": False
         }
-    return sal
+    
+    return {
+        "basic_salary": float(sal.basic_salary) if sal.basic_salary else 0,
+        "hra": float(sal.hra) if sal.hra else 0,
+        "conveyance_allowance": float(sal.conveyance_allowance) if sal.conveyance_allowance else 0,
+        "medical_allowance": float(sal.medical_allowance) if sal.medical_allowance else 0,
+        "special_allowance": float(sal.special_allowance) if sal.special_allowance else 0,
+        "education_allowance": float(sal.education_allowance) if sal.education_allowance else 0,
+        "other_allowance": float(sal.other_allowance) if sal.other_allowance else 0,
+        "pf_employee": float(sal.pf_employee) if sal.pf_employee else 0,
+        "pf_employer": float(sal.pf_employer) if sal.pf_employer else 0,
+        "esi_employee": float(sal.esi_employee) if sal.esi_employee else 0,
+        "esi_employer": float(sal.esi_employer) if sal.esi_employer else 0,
+        "professional_tax": float(sal.professional_tax) if sal.professional_tax else 0,
+        "tds": float(sal.tds) if sal.tds else 0,
+        "bonus": float(sal.bonus) if sal.bonus else 0,
+        "incentive": float(sal.incentive) if sal.incentive else 0,
+        "is_pf_applicable": sal.is_pf_applicable if hasattr(sal, 'is_pf_applicable') else True,
+        "is_esi_applicable": sal.is_esi_applicable if hasattr(sal, 'is_esi_applicable') else False
+    }
 
 @router.post("/employees/{emp_id}/salary")
 def update_employee_salary(
@@ -916,11 +959,27 @@ def update_employee_salary(
         sal = SalaryStructure(id=str(uuid.uuid4()), employee_id=emp_id)
         db.add(sal)
     
+    # Update all salary components
     sal.basic_salary = data.get("basic_salary", 0)
-    sal.hra_allowance = data.get("hra_allowance", 0)
+    sal.hra = data.get("hra", 0)
+    sal.conveyance_allowance = data.get("conveyance_allowance", 0)
+    sal.medical_allowance = data.get("medical_allowance", 0)
     sal.special_allowance = data.get("special_allowance", 0)
-    sal.pf_deduction = data.get("pf_deduction", 0)
+    sal.education_allowance = data.get("education_allowance", 0)
+    sal.other_allowance = data.get("other_allowance", 0)
+    
+    sal.pf_employee = data.get("pf_employee", 0)
+    sal.pf_employer = data.get("pf_employer", 0)
+    sal.esi_employee = data.get("esi_employee", 0)
+    sal.esi_employer = data.get("esi_employer", 0)
     sal.professional_tax = data.get("professional_tax", 0)
+    sal.tds = data.get("tds", 0)
+    
+    sal.bonus = data.get("bonus", 0)
+    sal.incentive = data.get("incentive", 0)
+    
+    sal.is_pf_applicable = data.get("is_pf_applicable", True)
+    sal.is_esi_applicable = data.get("is_esi_applicable", False)
     
     db.commit()
     return {"status": "success", "message": "Salary structure updated"}
