@@ -31,6 +31,8 @@ EXPOSE 8000
 RUN echo '#!/bin/bash\n\
     echo "🔄 Running database migrations..."\n\
     python migrate_db.py || echo "⚠️ Old migration had warnings..."\n\
+    echo "🔧 Fixing id column type..."\n\
+    python fix_id_column_type.py || echo "⚠️ ID column fix had warnings..."\n\
     echo "🔧 Fixing salary schema..."\n\
     python fix_salary_schema.py || echo "⚠️ Schema fix had warnings..."\n\
     echo "🔧 Adding employee_id column..."\n\
