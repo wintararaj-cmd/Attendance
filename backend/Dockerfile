@@ -31,6 +31,8 @@ EXPOSE 8000
 RUN echo '#!/bin/bash\n\
     echo "🔄 Running database migrations..."\n\
     python migrate_db.py || echo "⚠️ Old migration had warnings..."\n\
+    echo "🔧 Fixing salary schema..."\n\
+    python fix_salary_schema.py || echo "⚠️ Schema fix had warnings..."\n\
     echo "🔧 Adding employee_id column..."\n\
     python add_employee_id_column.py || echo "⚠️ employee_id migration failed, continuing..."\n\
     echo "🔧 Running comprehensive migrations..."\n\
@@ -41,3 +43,4 @@ RUN echo '#!/bin/bash\n\
 
 # Run the startup script
 CMD ["/bin/bash", "/app/start.sh"]
+
