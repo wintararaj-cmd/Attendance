@@ -6,13 +6,13 @@ When trying to save salary configuration in the Payroll Management page, you get
 Failed to save salary
 ```
 
-Backend error:
-```
-column salary_structures.employee_id does not exist
-```
+Backend errors:
+1. **Missing Column:** `column salary_structures.employee_id does not exist`
+2. **Schema Mismatch:** Extra columns (`name`, `hra_percentage`) in database that don't exist in the model
 
 ## Root Cause
-The database table `salary_structures` is missing the `employee_id` column that links salary configurations to employees.
+1. The database table `salary_structures` is missing the `employee_id` column
+2. The database has extra columns that cause SQLAlchemy to fail when trying to save
 
 ## Solution
 
