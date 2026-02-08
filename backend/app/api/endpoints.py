@@ -1110,6 +1110,15 @@ def update_employee_salary(
         error_msg = str(e)
         error_trace = traceback.format_exc()
         
+        # Log to both logger and stdout for visibility
+        print(f"\n{'='*60}")
+        print(f"ERROR SAVING SALARY STRUCTURE")
+        print(f"{'='*60}")
+        print(f"Employee ID: {emp_id}")
+        print(f"Error: {error_msg}")
+        print(f"Traceback:\n{error_trace}")
+        print(f"{'='*60}\n")
+        
         logger.error(f"❌ Error saving salary structure: {error_msg}")
         logger.error(f"Full traceback:\n{error_trace}")
         
