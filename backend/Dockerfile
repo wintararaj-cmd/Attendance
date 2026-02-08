@@ -30,7 +30,11 @@ EXPOSE 8000
 # Create startup script
 RUN echo '#!/bin/bash\n\
     echo "🔄 Running database migrations..."\n\
-    python migrate_db.py || echo "⚠️ Migration failed, continuing anyway..."\n\
+    python migrate_db.py || echo "⚠️ Old migration had warnings..."\n\
+    echo "🔧 Adding employee_id column..."\n\
+    python add_employee_id_column.py || echo "⚠️ employee_id migration failed, continuing..."\n\
+    echo "🔧 Running comprehensive migrations..."\n\
+    python run_migrations.py || echo "⚠️ Comprehensive migration had warnings..."\n\
     echo "🚀 Starting server..."\n\
     exec uvicorn app.main:app --host 0.0.0.0 --port 8000\n\
     ' > /app/start.sh && chmod +x /app/start.sh
