@@ -9,6 +9,7 @@ interface Employee {
     last_name?: string;
     department?: string;
     designation?: string;
+    employee_type?: string;
     status: string;
 }
 
@@ -56,6 +57,13 @@ interface SalaryStructure {
     // Settings
     is_pf_applicable: boolean;
     is_esi_applicable: boolean;
+    // Part-time / Contract & OT
+    is_hourly_based: boolean;
+    hourly_rate: number;
+    contract_rate_per_day: number;
+    ot_rate_multiplier: number;
+    ot_weekend_multiplier: number;
+    ot_holiday_multiplier: number;
 }
 
 export default function PayrollManagement() {
@@ -88,7 +96,13 @@ export default function PayrollManagement() {
         bonus: 0,
         incentive: 0,
         is_pf_applicable: true,
-        is_esi_applicable: false
+        is_esi_applicable: false,
+        is_hourly_based: false,
+        hourly_rate: 0,
+        contract_rate_per_day: 0,
+        ot_rate_multiplier: 1.5,
+        ot_weekend_multiplier: 2.0,
+        ot_holiday_multiplier: 2.5
     });
 
     useEffect(() => {
@@ -166,7 +180,13 @@ export default function PayrollManagement() {
                 bonus: 0,
                 incentive: 0,
                 is_pf_applicable: true,
-                is_esi_applicable: false
+                is_esi_applicable: false,
+                is_hourly_based: false,
+                hourly_rate: 0,
+                contract_rate_per_day: 0,
+                ot_rate_multiplier: 1.5,
+                ot_weekend_multiplier: 2.0,
+                ot_holiday_multiplier: 2.5
             });
             setShowConfigModal(true);
         }
@@ -394,6 +414,86 @@ export default function PayrollManagement() {
                         </div>
 
                         <div style={{ display: 'grid', gap: '1.5rem' }}>
+                            {/* Employment Type & Rates Section */}
+                            <div>
+                                <h4 style={{ margin: '0 0 1rem 0', color: '#7c3aed', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <Users size={18} />
+                                    Employment Type & Rates
+                                </h4>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', gridColumn: 'span 2' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={salaryForm.is_hourly_based}
+                                            onChange={e => setSalaryForm({ ...salaryForm, is_hourly_based: e.target.checked })}
+                                            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                                        />
+                                        <span style={{ fontWeight: 500 }}>Is Hourly Based (Part-time)</span>
+                                    </label>
+
+                                    {salaryForm.is_hourly_based && (
+                                        <div>
+                                            <label style={labelStyle}>Hourly Rate (₹)</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={salaryForm.hourly_rate}
+                                                onChange={e => setSalaryForm({ ...salaryForm, hourly_rate: Number(e.target.value) })}
+                                                placeholder="e.g., 200"
+                                            />
+                                        </div>
+                                    )}
+
+                                    <div>
+                                        <label style={labelStyle}>Contract Rate (Per Day)</label>
+                                        <input
+                                            type="number"
+                                            className="input"
+                                            value={salaryForm.contract_rate_per_day}
+                                            onChange={e => setSalaryForm({ ...salaryForm, contract_rate_per_day: Number(e.target.value) })}
+                                            placeholder="e.g., 1000"
+                                        />
+                                        <span style={{ fontSize: '0.75rem', color: '#666' }}>For contract workers</span>
+                                    </div>
+                                </div>
+
+                                <h5 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem', color: '#555' }}>Overtime Multipliers</h5>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+                                    <div>
+                                        <label style={labelStyle}>Weekday OT</label>
+                                        <input
+                                            type="number"
+                                            className="input"
+                                            step="0.1"
+                                            value={salaryForm.ot_rate_multiplier}
+                                            onChange={e => setSalaryForm({ ...salaryForm, ot_rate_multiplier: Number(e.target.value) })}
+                                            placeholder="1.5"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={labelStyle}>Weekend OT</label>
+                                        <input
+                                            type="number"
+                                            className="input"
+                                            step="0.1"
+                                            value={salaryForm.ot_weekend_multiplier}
+                                            onChange={e => setSalaryForm({ ...salaryForm, ot_weekend_multiplier: Number(e.target.value) })}
+                                            placeholder="2.0"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={labelStyle}>Holiday OT</label>
+                                        <input
+                                            type="number"
+                                            className="input"
+                                            step="0.1"
+                                            value={salaryForm.ot_holiday_multiplier}
+                                            onChange={e => setSalaryForm({ ...salaryForm, ot_holiday_multiplier: Number(e.target.value) })}
+                                            placeholder="2.5"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
                             {/* Earnings Section */}
                             <div>
                                 <h4 style={{ margin: '0 0 1rem 0', color: '#059669', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

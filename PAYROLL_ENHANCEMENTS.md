@@ -235,23 +235,20 @@ Content-Type: application/json
 }
 ```
 
-## Frontend Integration (To Do)
+## Frontend Integration
 
-The frontend needs to be updated to:
+1. **✅ Payroll Configuration UI (Done):**
+   - Added "Employment Type & Rates" section to Payroll Management
+   - Added toggle for "Hourly-based" payment
+   - Added fields for Hourly Rate and Contract Rate
+   - Added OT multiplier configuration fields (Weekday, Weekend, Holiday)
 
-1. **Payroll Configuration UI:**
-   - Add toggle for "Hourly-based" payment
-   - Show hourly rate field when hourly-based is enabled
-   - Show daily rate field for contract workers
-   - Add OT multiplier configuration fields
-   - Conditionally show/hide fields based on employee type
-
-2. **Attendance Tracking:**
+2. **Attendance Tracking (To Do):**
    - Add fields to track OT hours (weekday, weekend, holiday)
    - Add field to track total hours worked (for hourly workers)
    - Auto-calculate OT based on check-in/check-out times
 
-3. **Payslip Display:**
+3. **Payslip Display (To Do):**
    - Show OT breakdown (weekday, weekend, holiday)
    - Display hourly rate or daily rate (if applicable)
    - Show hours worked (for hourly workers)
