@@ -787,6 +787,9 @@ def get_employee_payroll(
     emp = db.query(Employee).filter(Employee.id == emp_id).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
+    
+    # Get employee type
+    employee_type = getattr(emp, 'employee_type', 'full_time')
         
     # Fetch Salary Structure
     sal = db.query(SalaryStructure).filter(SalaryStructure.employee_id == emp_id).first()
@@ -804,7 +807,13 @@ def get_employee_payroll(
             "bonus": 0,
             "incentive": 0,
             "is_pf_applicable": True,
-            "is_esi_applicable": False
+            "is_esi_applicable": False,
+            "is_hourly_based": False,
+            "hourly_rate": 0,
+            "contract_rate_per_day": 0,
+            "ot_rate_multiplier": 1.5,
+            "ot_weekend_multiplier": 2.0,
+            "ot_holiday_multiplier": 2.5
         }
     else:
         salary_struct = {
@@ -819,7 +828,13 @@ def get_employee_payroll(
             "incentive": float(sal.incentive) if sal.incentive else 0,
             "tds": float(sal.tds) if sal.tds else 0,
             "is_pf_applicable": sal.is_pf_applicable if hasattr(sal, 'is_pf_applicable') else True,
-            "is_esi_applicable": sal.is_esi_applicable if hasattr(sal, 'is_esi_applicable') else False
+            "is_esi_applicable": sal.is_esi_applicable if hasattr(sal, 'is_esi_applicable') else False,
+            "is_hourly_based": sal.is_hourly_based if hasattr(sal, 'is_hourly_based') else False,
+            "hourly_rate": float(sal.hourly_rate) if hasattr(sal, 'hourly_rate') and sal.hourly_rate else 0,
+            "contract_rate_per_day": float(sal.contract_rate_per_day) if hasattr(sal, 'contract_rate_per_day') and sal.contract_rate_per_day else 0,
+            "ot_rate_multiplier": float(sal.ot_rate_multiplier) if hasattr(sal, 'ot_rate_multiplier') and sal.ot_rate_multiplier else 1.5,
+            "ot_weekend_multiplier": float(sal.ot_weekend_multiplier) if hasattr(sal, 'ot_weekend_multiplier') and sal.ot_weekend_multiplier else 2.0,
+            "ot_holiday_multiplier": float(sal.ot_holiday_multiplier) if hasattr(sal, 'ot_holiday_multiplier') and sal.ot_holiday_multiplier else 2.5
         }
     
     # Calculate Attendance for Current Month
@@ -833,18 +848,40 @@ def get_employee_payroll(
         AttendanceLog.status == "present"
     ).count()
     
-    # Simple Logic: Assume 30 day month
+    # Aggregate OT hours from attendance logs
+    from sqlalchemy import func
+    ot_aggregates = db.query(
+        func.sum(AttendanceLog.ot_hours).label('total_ot_hours'),
+        func.sum(AttendanceLog.ot_weekend_hours).label('total_ot_weekend_hours'),
+        func.sum(AttendanceLog.ot_holiday_hours).label('total_ot_holiday_hours'),
+        func.sum(AttendanceLog.total_hours_worked).label('total_hours_worked')
+    ).filter(
+        AttendanceLog.employee_id == emp_id,
+        AttendanceLog.date >= start_date
+    ).first()
+    
+    ot_hours = float(ot_aggregates.total_ot_hours or 0)
+    ot_weekend_hours = float(ot_aggregates.total_ot_weekend_hours or 0)
+    ot_holiday_hours = float(ot_aggregates.total_ot_holiday_hours or 0)
+    total_hours_worked = float(ot_aggregates.total_hours_worked or 0)
+    
+    # Attendance summary
     attendance = {
         "total_working_days": 30,
         "present_days": present_days,
-        "overtime_hours": 0
+        "ot_hours": ot_hours,
+        "ot_weekend_hours": ot_weekend_hours,
+        "ot_holiday_hours": ot_holiday_hours,
+        "total_hours_worked": total_hours_worked
     }
     
-    result = payroll_service.calculate_net_salary(salary_struct, attendance)
+    # Calculate payroll with employee type
+    result = payroll_service.calculate_net_salary(salary_struct, attendance, employee_type)
     
     return {
         "employee_id": emp.id,
         "employee_name": f"{emp.first_name} {emp.last_name or ''}",
+        "employee_type": employee_type,
         "month": today.strftime("%B %Y"),
         "present_days": present_days,
         **result
@@ -1036,7 +1073,13 @@ def get_employee_salary_struct(emp_id: str, db: Session = Depends(get_db)):
             "bonus": 0,
             "incentive": 0,
             "is_pf_applicable": True,
-            "is_esi_applicable": False
+            "is_esi_applicable": False,
+            "is_hourly_based": False,
+            "hourly_rate": 0,
+            "contract_rate_per_day": 0,
+            "ot_rate_multiplier": 1.5,
+            "ot_weekend_multiplier": 2.0,
+            "ot_holiday_multiplier": 2.5
         }
     
     return {
@@ -1056,7 +1099,13 @@ def get_employee_salary_struct(emp_id: str, db: Session = Depends(get_db)):
         "bonus": float(sal.bonus) if sal.bonus else 0,
         "incentive": float(sal.incentive) if sal.incentive else 0,
         "is_pf_applicable": sal.is_pf_applicable if hasattr(sal, 'is_pf_applicable') else True,
-        "is_esi_applicable": sal.is_esi_applicable if hasattr(sal, 'is_esi_applicable') else False
+        "is_esi_applicable": sal.is_esi_applicable if hasattr(sal, 'is_esi_applicable') else False,
+        "is_hourly_based": sal.is_hourly_based if hasattr(sal, 'is_hourly_based') else False,
+        "hourly_rate": float(sal.hourly_rate) if hasattr(sal, 'hourly_rate') and sal.hourly_rate else 0,
+        "contract_rate_per_day": float(sal.contract_rate_per_day) if hasattr(sal, 'contract_rate_per_day') and sal.contract_rate_per_day else 0,
+        "ot_rate_multiplier": float(sal.ot_rate_multiplier) if hasattr(sal, 'ot_rate_multiplier') and sal.ot_rate_multiplier else 1.5,
+        "ot_weekend_multiplier": float(sal.ot_weekend_multiplier) if hasattr(sal, 'ot_weekend_multiplier') and sal.ot_weekend_multiplier else 2.0,
+        "ot_holiday_multiplier": float(sal.ot_holiday_multiplier) if hasattr(sal, 'ot_holiday_multiplier') and sal.ot_holiday_multiplier else 2.5
     }
 
 @router.post("/employees/{emp_id}/salary")
@@ -1099,6 +1148,20 @@ def update_employee_salary(
         
         sal.is_pf_applicable = data.get("is_pf_applicable", True)
         sal.is_esi_applicable = data.get("is_esi_applicable", False)
+        
+        # New fields for part-time/contract workers and OT
+        if hasattr(sal, 'is_hourly_based'):
+            sal.is_hourly_based = data.get("is_hourly_based", False)
+        if hasattr(sal, 'hourly_rate'):
+            sal.hourly_rate = data.get("hourly_rate", 0)
+        if hasattr(sal, 'contract_rate_per_day'):
+            sal.contract_rate_per_day = data.get("contract_rate_per_day", 0)
+        if hasattr(sal, 'ot_rate_multiplier'):
+            sal.ot_rate_multiplier = data.get("ot_rate_multiplier", 1.5)
+        if hasattr(sal, 'ot_weekend_multiplier'):
+            sal.ot_weekend_multiplier = data.get("ot_weekend_multiplier", 2.0)
+        if hasattr(sal, 'ot_holiday_multiplier'):
+            sal.ot_holiday_multiplier = data.get("ot_holiday_multiplier", 2.5)
         
         logger.info("Committing salary structure to database...")
         db.commit()

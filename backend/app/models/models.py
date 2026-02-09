@@ -93,6 +93,12 @@ class AttendanceLog(Base):
     status = Column(String) # Cast Enum to string for SQLite compatibility if needed
     confidence_score = Column(Numeric(5, 2), nullable=True)
     
+    # Overtime tracking
+    ot_hours = Column(Numeric(5, 2), default=0.0)  # Regular weekday OT hours
+    ot_weekend_hours = Column(Numeric(5, 2), default=0.0)  # Weekend OT hours
+    ot_holiday_hours = Column(Numeric(5, 2), default=0.0)  # Holiday OT hours
+    total_hours_worked = Column(Numeric(5, 2), default=0.0)  # Total hours worked that day
+    
     employee = relationship("Employee", back_populates="attendance_logs")
 
 class SalaryStructure(Base):
@@ -126,6 +132,16 @@ class SalaryStructure(Base):
     # Calculation Settings
     is_pf_applicable = Column(Boolean, default=True)
     is_esi_applicable = Column(Boolean, default=False)
+    
+    # Part-time / Contract / Hourly Worker Settings
+    is_hourly_based = Column(Boolean, default=False)  # True for hourly workers
+    hourly_rate = Column(Numeric(12, 2), default=0.0)  # Rate per hour for part-time/contract
+    contract_rate_per_day = Column(Numeric(12, 2), default=0.0)  # Daily rate for contract workers
+    
+    # Overtime Settings
+    ot_rate_multiplier = Column(Numeric(5, 2), default=1.5)  # Default 1.5x for weekday OT
+    ot_weekend_multiplier = Column(Numeric(5, 2), default=2.0)  # 2x for weekend OT
+    ot_holiday_multiplier = Column(Numeric(5, 2), default=2.5)  # 2.5x for holiday OT
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())

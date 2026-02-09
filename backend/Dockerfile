@@ -29,17 +29,25 @@ EXPOSE 8000
 
 # Create startup script
 RUN echo '#!/bin/bash\n\
-    echo "🔄 Running database migrations..."\n\
-    python migrate_db.py || echo "⚠️ Old migration had warnings..."\n\
-    echo "🔧 Fixing id column type..."\n\
-    python fix_id_column_type.py || echo "⚠️ ID column fix had warnings..."\n\
-    echo "🔧 Fixing salary schema..."\n\
-    python fix_salary_schema.py || echo "⚠️ Schema fix had warnings..."\n\
-    echo "🔧 Adding employee_id column..."\n\
-    python add_employee_id_column.py || echo "⚠️ employee_id migration failed, continuing..."\n\
-    echo "🔧 Running comprehensive migrations..."\n\
-    python run_migrations.py || echo "⚠️ Comprehensive migration had warnings..."\n\
-    echo "🚀 Starting server..."\n\
+    echo "============================================================"\n\
+    echo "DATABASE SETUP - Attendance System"\n\
+    echo "============================================================"\n\
+    echo ""\n\
+    echo "[1/4] Initializing database (creating tables)..."\n\
+    python init_database.py || echo "[WARN] Database initialization had warnings (tables may already exist)"\n\
+    echo ""\n\
+    echo "[2/4] Running legacy migrations..."\n\
+    python migrate_db.py || echo "[WARN] Legacy migration had warnings..."\n\
+    python fix_id_column_type.py || echo "[WARN] ID column fix had warnings..."\n\
+    python fix_salary_schema.py || echo "[WARN] Schema fix had warnings..."\n\
+    python add_employee_id_column.py || echo "[WARN] employee_id migration failed, continuing..."\n\
+    python run_migrations.py || echo "[WARN] Comprehensive migration had warnings..."\n\
+    echo ""\n\
+    echo "[3/4] Applying payroll enhancements (part-time/contract/OT support)..."\n\
+    python migrate_payroll_enhancements.py || echo "[WARN] Payroll enhancements migration had warnings..."\n\
+    echo ""\n\
+    echo "[4/4] Starting application server..."\n\
+    echo "============================================================"\n\
     exec uvicorn app.main:app --host 0.0.0.0 --port 8000\n\
     ' > /app/start.sh && chmod +x /app/start.sh
 
