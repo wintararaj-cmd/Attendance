@@ -511,6 +511,29 @@ async def mark_checkout(
             
             # Mark check-out
             existing_log.check_out = now_ist
+            
+            # Calculate total hours worked
+            if existing_log.check_in:
+                # Ensure check_in is timezone aware or handle naive
+                check_in_time = existing_log.check_in
+                if check_in_time.tzinfo is None:
+                    # If check_in stored as naive UTC (common in some setups), localize it
+                    # But here likely it's already relevant to the session or DB type
+                    pass 
+                
+                # Simple calculation if both are aware or both naive
+                try:
+                    duration = now_ist - check_in_time
+                    total_hours = duration.total_seconds() / 3600
+                    existing_log.total_hours_worked = round(total_hours, 2)
+                    
+                    # Basic OT Calculation (Assuming 9 hour shift)
+                    # Future: Check holiday/weekend status for other containers
+                    if total_hours > 9:
+                        existing_log.ot_hours = round(total_hours - 9, 2)
+                except Exception as e:
+                    print(f"Error calculating hours: {e}")
+            
             db.commit()
             
             return {
