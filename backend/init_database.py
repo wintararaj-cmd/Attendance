@@ -38,29 +38,27 @@ if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 def init_database():
-    """Initialize database by creating all tables"""
+    """Initialize database by creating missing tables (SAFE - does not drop existing data)"""
     print("=" * 60)
-    print("DATABASE INITIALIZATION")
+    print("DATABASE INITIALIZATION (SAFE MODE)")
     print("=" * 60)
     print(f"\nDatabase: {DATABASE_URL.split('@')[1] if '@' in DATABASE_URL else DATABASE_URL.split('://')[1] if '://' in DATABASE_URL else 'unknown'}")
     
     try:
         engine = create_engine(DATABASE_URL)
         
-        print("\n[1/3] Dropping existing tables (if any)...")
-        # Drop all tables in reverse order of dependencies
-        try:
-            Base.metadata.drop_all(engine)
-            print("   [OK] Existing tables dropped")
-        except Exception as e:
-            print(f"   [INFO] No existing tables to drop: {e}")
-        
-        print("\n[2/3] Creating all tables from models...")
-        Base.metadata.create_all(engine)
-        print("   [OK] All tables created successfully")
-        
-        print("\n[3/3] Verifying table creation...")
+        print("\n[1/2] Checking existing tables...")
         from sqlalchemy import inspect
+        inspector = inspect(engine)
+        existing_tables = inspector.get_table_names()
+        print(f"   [INFO] Found {len(existing_tables)} existing tables: {', '.join(existing_tables) if existing_tables else 'none'}")
+        
+        print("\n[2/2] Creating missing tables (preserving existing data)...")
+        # This only creates tables that don't exist - SAFE!
+        Base.metadata.create_all(engine, checkfirst=True)
+        print("   [OK] All required tables exist")
+        
+        print("\n[3/3] Verifying table structure...")
         inspector = inspect(engine)
         tables = inspector.get_table_names()
         
@@ -69,25 +67,28 @@ def init_database():
             'employees', 'attendance_logs', 'salary_structures'
         ]
         
+        all_exist = True
         for table in expected_tables:
             if table in tables:
                 columns = [col['name'] for col in inspector.get_columns(table)]
                 print(f"   [OK] {table}: {len(columns)} columns")
             else:
                 print(f"   [ERROR] {table}: NOT FOUND")
-                return False
+                all_exist = False
+        
+        if not all_exist:
+            print("\n[WARNING] Some tables are missing!")
+            return False
         
         print("\n" + "=" * 60)
-        print("[SUCCESS] Database initialized successfully!")
+        print("[SUCCESS] Database initialization complete!")
         print("=" * 60)
-        print("\nCreated tables:")
-        for table in expected_tables:
-            print(f"  - {table}")
+        print("\n[SAFE MODE] Existing data preserved")
+        print("Only missing tables were created")
         
         print("\nNext steps:")
-        print("  1. Create an admin user (if needed)")
-        print("  2. Run: python migrate_payroll_enhancements.py")
-        print("  3. Start the application")
+        print("  1. Run: python migrate_payroll_enhancements.py")
+        print("  2. Start the application")
         
         return True
         
