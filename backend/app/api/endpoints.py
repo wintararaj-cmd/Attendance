@@ -1669,37 +1669,47 @@ async def delete_all_employees(
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to delete data: {str(e)}")
 
+
 @router.post("/debug/recalculate-hours")
-def recalculate_hours_today(
+def recalculate_hours(
+    days: int = 30,
     db: Session = Depends(get_db),
     current_user: AdminUser = Depends(get_current_user)
 ):
     """
-    Force recalculate total hours and OT for today's logs
-    Useful if schema was updated after checkouts
+    Force recalculate total hours and OT for logs in the last 'days' (default 30).
+    Useful if schema was updated after checkouts.
     """
     try:
         IST = timezone(timedelta(hours=5, minutes=30))
-        now_ist = datetime.datetime.now(IST)
-        today = now_ist.date()
+        today = datetime.datetime.now(IST).date()
+        start_date = today - timedelta(days=days)
+        
+        logger.info(f"Recalculating hours from {start_date} to {today}")
         
         logs = db.query(AttendanceLog).filter(
-            AttendanceLog.date == today,
+            AttendanceLog.date >= start_date,
             AttendanceLog.check_out != None
         ).all()
         
         count = 0
+        updated_count = 0
+        
         for log in logs:
             if log.check_in and log.check_out:
                 # Normalize check_in
                 c_in = log.check_in
                 if c_in.tzinfo is None:
                     c_in = c_in.replace(tzinfo=IST)
+                else:
+                    c_in = c_in.astimezone(IST)
                 
                 # Normalize check_out
                 c_out = log.check_out
                 if c_out.tzinfo is None:
                     c_out = c_out.replace(tzinfo=IST)
+                else:
+                    c_out = c_out.astimezone(IST)
                 
                 # Calculate duration
                 duration = c_out - c_in
@@ -1709,10 +1719,14 @@ def recalculate_hours_today(
                 deduction = 0.5
                 net_hours = max(0, raw_hours - deduction)
                 
+                old_total = float(log.total_hours_worked or 0)
+                
                 log.total_hours_worked = round(net_hours, 2)
                 
                 # OT Calc
-                is_weekend = today.weekday() >= 5
+                # Use log.date for correct weekday check
+                log_date = log.date
+                is_weekend = log_date.weekday() >= 5
                 standard_work = 8.0
                 
                 if is_weekend:
@@ -1725,12 +1739,20 @@ def recalculate_hours_today(
                         log.ot_hours = 0
                 
                 count += 1
+                if abs(old_total - log.total_hours_worked) > 0.01:
+                    updated_count += 1
         
         db.commit()
-        return {"status": "success", "message": f"Recalculated {count} logs for {today}"}
+        return {
+            "status": "success", 
+            "message": f"Processed {count} logs. Updated {updated_count} records from {start_date} to {today}"
+        }
         
     except Exception as e:
         db.rollback()
+        import traceback
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
+
 
 

@@ -177,6 +177,7 @@ export default function AttendanceLogs() {
                             <Filter size={16} /> Filter
                         </button>
 
+
                         <button
                             className="btn"
                             onClick={handleExport}
@@ -190,6 +191,33 @@ export default function AttendanceLogs() {
                             }}
                         >
                             <Download size={16} /> {exporting ? 'Exporting...' : 'Export CSV'}
+                        </button>
+
+                        <button
+                            className="btn"
+                            onClick={async () => {
+                                if (confirm("Recalculate total hours for the last 30 days? This will apply the 30-min break deduction to all existing logs.")) {
+                                    try {
+                                        setLoading(true);
+                                        const res = await axios.post('/api/v1/debug/recalculate-hours', {}, { params: { days: 30 } });
+                                        alert(res.data.message);
+                                        fetchLogs(); // Refresh logs
+                                    } catch (err: any) {
+                                        alert("Error: " + (err.response?.data?.detail || err.message));
+                                    } finally {
+                                        setLoading(false);
+                                    }
+                                }
+                            }}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                backgroundColor: '#6366f1',
+                                color: 'white'
+                            }}
+                        >
+                            <Clock size={16} /> Sync Hours
                         </button>
                     </div>
                 </div>
