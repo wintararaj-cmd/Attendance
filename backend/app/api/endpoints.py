@@ -523,31 +523,52 @@ async def mark_checkout(
                 
                 # Simple calculation if both are aware or both naive
                 # Simple calculation if both are aware or both naive
+                # Simple calculation if both are aware or both naive
                 try:
+                    # Normalize timestamps to ensure compatibility
+                    check_in_time = existing_log.check_in
+                    
+                    # If check_in is naive (no timezone), assume it matches now_ist's timezone (IST)
+                    # This happens with some DBs like SQLite that strip timezone info
+                    if check_in_time.tzinfo is None:
+                        check_in_time = check_in_time.replace(tzinfo=now_ist.tzinfo)
+                    
                     duration = now_ist - check_in_time
-                    total_hours = duration.total_seconds() / 3600
-                    existing_log.total_hours_worked = round(total_hours, 2)
+                    raw_hours = duration.total_seconds() / 3600
+                    
+                    print(f"⏱️ Time Calc - In: {check_in_time}, Out: {now_ist}")
+                    print(f"⏱️ Raw Duration: {raw_hours:.2f} hours")
+                    
+                    # Tiffin/Break Deduction (30 mins = 0.5 hours)
+                    deduction = 0.5
+                    net_hours = max(0, raw_hours - deduction)
+                    
+                    existing_log.total_hours_worked = round(net_hours, 2)
+                    print(f"✅ Net Hours (after {deduction}h deduction): {existing_log.total_hours_worked}")
                     
                     # Enhanced OT Calculation
                     # Check if weekend (Saturday=5, Sunday=6)
                     is_weekend = now_ist.weekday() >= 5
                     
-                    # Standard shift duration (9 hours including break)
-                    standard_shift_hours = 9.0
+                    # Standard work day (Net hours)
+                    # Assuming 8 hours is the standard full day after break
+                    standard_work_hours = 8.0
                     
                     if is_weekend:
-                         # For weekends, typically all hours are considered "Weekend OT" 
-                         # or at least mapped to the specific bucket
-                         existing_log.ot_weekend_hours = round(total_hours, 2)
+                         # Weekend OT
+                         existing_log.ot_weekend_hours = round(net_hours, 2)
                          existing_log.ot_hours = 0.0
                     else:
                         # Weekday OT
-                        if total_hours > standard_shift_hours:
-                            existing_log.ot_hours = round(total_hours - standard_shift_hours, 2)
+                        if net_hours > standard_work_hours:
+                            existing_log.ot_hours = round(net_hours - standard_work_hours, 2)
                         else:
                             existing_log.ot_hours = 0.0
+                            
                 except Exception as e:
-                    print(f"Error calculating hours: {e}")
+                    print(f"❌ Error calculating hours: {e}")
+                    import traceback
+                    traceback.print_exc()
             
             db.commit()
             
@@ -555,7 +576,9 @@ async def mark_checkout(
                 "status": "success",
                 "employee": matched_emp.first_name,
                 "emp_code": matched_emp.emp_code,
-                "check_out_time": now_ist.strftime('%I:%M %p')
+                "check_out_time": now_ist.strftime('%I:%M %p'),
+                "total_hours": existing_log.total_hours_worked,
+                "ot_hours": existing_log.ot_hours if not is_weekend else existing_log.ot_weekend_hours
             }
         
         return {"status": "failed", "reason": "Unknown Error"}
@@ -1633,7 +1656,69 @@ async def delete_all_employees(
                 "attendance_logs": attendance_count
             }
         }
+
+@router.post("/debug/recalculate-hours")
+def recalculate_hours_today(
+    db: Session = Depends(get_db),
+    current_user: AdminUser = Depends(get_current_user)
+):
+    """
+    Force recalculate total hours and OT for today's logs
+    Useful if schema was updated after checkouts
+    """
+    try:
+        IST = timezone(timedelta(hours=5, minutes=30))
+        now_ist = datetime.datetime.now(IST)
+        today = now_ist.date()
+        
+        logs = db.query(AttendanceLog).filter(
+            AttendanceLog.date == today,
+            AttendanceLog.check_out != None
+        ).all()
+        
+        count = 0
+        for log in logs:
+            if log.check_in and log.check_out:
+                # Normalize check_in
+                c_in = log.check_in
+                if c_in.tzinfo is None:
+                    c_in = c_in.replace(tzinfo=IST)
+                
+                # Normalize check_out
+                c_out = log.check_out
+                if c_out.tzinfo is None:
+                    c_out = c_out.replace(tzinfo=IST)
+                
+                # Calculate duration
+                duration = c_out - c_in
+                raw_hours = duration.total_seconds() / 3600
+                
+                # Deduct 0.5 hours (30 mins break)
+                deduction = 0.5
+                net_hours = max(0, raw_hours - deduction)
+                
+                log.total_hours_worked = round(net_hours, 2)
+                
+                # OT Calc
+                is_weekend = today.weekday() >= 5
+                standard_work = 8.0
+                
+                if is_weekend:
+                    log.ot_weekend_hours = round(net_hours, 2)
+                    log.ot_hours = 0
+                else:
+                    if net_hours > standard_work:
+                        log.ot_hours = round(net_hours - standard_work, 2)
+                    else:
+                        log.ot_hours = 0
+                
+                count += 1
+        
+        db.commit()
+        return {"status": "success", "message": f"Recalculated {count} logs for {today}"}
+        
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to delete data: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
