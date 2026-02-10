@@ -1015,7 +1015,11 @@ def get_attendance_logs(
             "check_in": check_in_ist.strftime("%I:%M %p") if check_in_ist else None,
             "check_out": check_out_ist.strftime("%I:%M %p") if check_out_ist else None,
             "status": log.status,
-            "confidence": float(log.confidence_score) if log.confidence_score else None
+            "confidence": float(log.confidence_score) if log.confidence_score else None,
+            "total_hours_worked": float(log.total_hours_worked) if log.total_hours_worked else 0,
+            "ot_hours": float(log.ot_hours) if log.ot_hours else 0,
+            "ot_weekend_hours": float(log.ot_weekend_hours) if log.ot_weekend_hours else 0,
+            "ot_holiday_hours": float(log.ot_holiday_hours) if log.ot_holiday_hours else 0
         })
     
     return {"logs": result}
@@ -1066,7 +1070,7 @@ def export_attendance_logs(
         writer = csv.writer(output)
         
         # Header
-        writer.writerow(['Date', 'Employee Name', 'Employee Code', 'Department', 'Check In', 'Check Out', 'Status', 'Confidence Score'])
+        writer.writerow(['Date', 'Employee Name', 'Employee Code', 'Department', 'Check In', 'Check Out', 'Status', 'Total Hours', 'OT Hours', 'Weekend OT', 'Holiday OT', 'Confidence Score'])
         
         for log in logs:
             emp = log.employee
@@ -1095,6 +1099,10 @@ def export_attendance_logs(
                 check_in_ist.strftime("%I:%M %p") if check_in_ist else '',
                 check_out_ist.strftime("%I:%M %p") if check_out_ist else '',
                 log.status,
+                f"{float(log.total_hours_worked):.2f}" if log.total_hours_worked else '0.00',
+                f"{float(log.ot_hours):.2f}" if log.ot_hours else '0.00',
+                f"{float(log.ot_weekend_hours):.2f}" if log.ot_weekend_hours else '0.00',
+                f"{float(log.ot_holiday_hours):.2f}" if log.ot_holiday_hours else '0.00',
                 f"{float(log.confidence_score):.2f}" if log.confidence_score else ''
             ])
         
