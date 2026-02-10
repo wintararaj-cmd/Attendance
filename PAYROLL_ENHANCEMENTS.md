@@ -243,15 +243,15 @@ Content-Type: application/json
    - Added fields for Hourly Rate and Contract Rate
    - Added OT multiplier configuration fields (Weekday, Weekend, Holiday)
 
-2. **Attendance Tracking (To Do):**
-   - Add fields to track OT hours (weekday, weekend, holiday)
-   - Add field to track total hours worked (for hourly workers)
-   - Auto-calculate OT based on check-in/check-out times
+2. **Attendance Tracking (Done):**
+   - ✅ Add fields to track OT hours (weekday, weekend, holiday)
+   - ✅ Add field to track total hours worked (for hourly workers)
+   - ✅ Auto-calculate OT based on check-in/check-out times
 
-3. **Payslip Display (To Do):**
-   - Show OT breakdown (weekday, weekend, holiday)
-   - Display hourly rate or daily rate (if applicable)
-   - Show hours worked (for hourly workers)
+3. **Payslip Display (Done):**
+   - ✅ Show OT breakdown (weekday, weekend, holiday)
+   - ✅ Display hourly rate or daily rate (if applicable)
+   - ✅ Show hours worked (for hourly workers)
 
 ## Benefits
 

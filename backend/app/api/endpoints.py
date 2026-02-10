@@ -522,15 +522,30 @@ async def mark_checkout(
                     pass 
                 
                 # Simple calculation if both are aware or both naive
+                # Simple calculation if both are aware or both naive
                 try:
                     duration = now_ist - check_in_time
                     total_hours = duration.total_seconds() / 3600
                     existing_log.total_hours_worked = round(total_hours, 2)
                     
-                    # Basic OT Calculation (Assuming 9 hour shift)
-                    # Future: Check holiday/weekend status for other containers
-                    if total_hours > 9:
-                        existing_log.ot_hours = round(total_hours - 9, 2)
+                    # Enhanced OT Calculation
+                    # Check if weekend (Saturday=5, Sunday=6)
+                    is_weekend = now_ist.weekday() >= 5
+                    
+                    # Standard shift duration (9 hours including break)
+                    standard_shift_hours = 9.0
+                    
+                    if is_weekend:
+                         # For weekends, typically all hours are considered "Weekend OT" 
+                         # or at least mapped to the specific bucket
+                         existing_log.ot_weekend_hours = round(total_hours, 2)
+                         existing_log.ot_hours = 0.0
+                    else:
+                        # Weekday OT
+                        if total_hours > standard_shift_hours:
+                            existing_log.ot_hours = round(total_hours - standard_shift_hours, 2)
+                        else:
+                            existing_log.ot_hours = 0.0
                 except Exception as e:
                     print(f"Error calculating hours: {e}")
             
@@ -1250,24 +1265,48 @@ def download_payslip_pdf(emp_id: str, db: Session = Depends(get_db)):
     
     today = datetime.date.today()
     start_date = today.replace(day=1)
-    present_days = db.query(AttendanceLog).filter(
+    
+    # Fetch logs for aggregation
+    logs = db.query(AttendanceLog).filter(
         AttendanceLog.employee_id == emp_id,
         AttendanceLog.date >= start_date,
         AttendanceLog.status == "present"
-    ).count()
+    ).all()
+    
+    present_days = len(logs)
+    
+    # Aggregate OT
+    ot_hours = sum(float(log.ot_hours or 0) for log in logs)
+    ot_weekend_hours = sum(float(log.ot_weekend_hours or 0) for log in logs)
+    ot_holiday_hours = sum(float(log.ot_holiday_hours or 0) for log in logs)
+    total_hours_worked = sum(float(log.total_hours_worked or 0) for log in logs)
     
     attendance = {
         "total_working_days": 30,
+        "present_days": present_days,
         "unpaid_leaves": max(0, 30 - present_days),
-        "overtime_hours": 0
+        "ot_hours": ot_hours,
+        "ot_weekend_hours": ot_weekend_hours,
+        "ot_holiday_hours": ot_holiday_hours,
+        "total_hours_worked": total_hours_worked
     }
     
     salary_struct = {
-        "basic_salary": basic, "hra_allowance": hra, "special_allowance": special, 
-        "pf_deduction": pf, "professional_tax": pt
+        "basic_salary": basic, "hra": hra, "special_allowance": special, 
+        "pf_employee": pf, "professional_tax": pt,
+        # Pass other fields needed for calculation
+        "conveyance_allowance": float(sal.conveyance_allowance) if sal else 0,
+        "medical_allowance": float(sal.medical_allowance) if sal else 0,
+        "education_allowance": float(sal.education_allowance) if sal else 0,
+        "other_allowance": float(sal.other_allowance) if sal else 0,
+        "is_hourly_based": sal.is_hourly_based if sal else False,
+        "hourly_rate": float(sal.hourly_rate) if sal else 0,
+        "contract_rate_per_day": float(sal.contract_rate_per_day) if sal else 0,
+        "ot_rate_multiplier": float(sal.ot_rate_multiplier) if sal else 1.5,
+        "ot_weekend_multiplier": float(sal.ot_weekend_multiplier) if sal else 2.0
     }
     
-    net_data = payroll_service.calculate_net_salary(salary_struct, attendance)
+    net_data = payroll_service.calculate_net_salary(salary_struct, attendance, getattr(emp, 'employee_type', 'full_time'))
     
     # --- Generate PDF ---
     filename = f"Payslip_{emp.first_name}_{today.strftime('%b_%Y')}.pdf"
@@ -1283,13 +1322,16 @@ def download_payslip_pdf(emp_id: str, db: Session = Depends(get_db)):
     c.setFont("Helvetica", 12)
     c.drawString(50, height - 80, f"Employee: {emp.first_name} {emp.last_name or ''}")
     c.drawString(50, height - 100, f"Employee ID: {emp.emp_code}")
+    c.drawString(50, height - 120, f"Designation: {getattr(emp, 'designation', 'N/A')}")
     
     # Attendance
-    c.drawString(50, height - 140, f"Present Days: {present_days}")
-    c.drawString(200, height - 140, f"Total Days: 30")
+    c.drawString(50, height - 150, f"Present Days: {present_days}")
+    c.drawString(200, height - 150, f"Total Days: 30")
+    if total_hours_worked > 0:
+        c.drawString(350, height - 150, f"Total Hours: {total_hours_worked}")
     
     # Table Header
-    y = height - 180
+    y = height - 190
     c.setLineWidth(1)
     c.line(50, y, width - 50, y)
     y -= 20
@@ -1309,26 +1351,44 @@ def download_payslip_pdf(emp_id: str, db: Session = Depends(get_db)):
     
     start_y = y
     
+    # Basic
     c.drawString(50, y, "Basic Salary")
     c.drawString(300, y, f"{earnings['basic']:.2f}")
     
+    # PF
     c.drawString(350, y, "Provident Fund")
     c.drawString(500, y, f"{deductions['pf']:.2f}")
     y -= 20
     
+    # HRA
     c.drawString(50, y, "HRA")
     c.drawString(300, y, f"{earnings['hra']:.2f}")
     
+    # PT
     c.drawString(350, y, "Professional Tax")
     c.drawString(500, y, f"{deductions['prof_tax']:.2f}")
     y -= 20
     
-    c.drawString(50, y, "Allowances")
+    # Allowances (grouped or specific)
+    c.drawString(50, y, "Special Allowance")
     c.drawString(300, y, f"{earnings['special']:.2f}")
     
+    # LOP
     c.drawString(350, y, "LOP")
     c.drawString(500, y, f"{deductions['lop']:.2f}")
     y -= 20
+    
+    # Overtime
+    if earnings['overtime_total'] > 0:
+        c.drawString(50, y, f"Overtime ({attendance['ot_hours']}h Reg, {attendance['ot_weekend_hours']}h Wknd)")
+        c.drawString(300, y, f"{earnings['overtime_total']:.2f}")
+        y -= 20
+
+    # Hourly / Contract specific
+    if salary_struct['is_hourly_based']:
+        c.drawString(50, y, f"Hourly Pay ({attendance['total_hours_worked']} hrs)")
+        c.drawString(300, y, f"Included") # Usually part of gross, but here structure varies
+        y -= 20
     
     # Totals
     y -= 10

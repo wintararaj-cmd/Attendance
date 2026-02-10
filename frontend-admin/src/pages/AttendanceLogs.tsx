@@ -11,6 +11,10 @@ interface AttendanceLog {
     check_out: string | null;
     status: string;
     confidence: number | null;
+    ot_hours: number;
+    ot_weekend_hours: number;
+    ot_holiday_hours: number;
+    total_hours_worked: number;
 }
 
 
@@ -203,17 +207,18 @@ export default function AttendanceLogs() {
                                 <tr>
                                     <th>Date</th>
                                     <th>Employee</th>
-                                    <th>Code</th>
                                     <th>Check In</th>
                                     <th>Check Out</th>
                                     <th>Status</th>
-                                    <th>FACE MATCH PERCENTAGE</th>
+                                    <th>Total Hours</th>
+                                    <th>OT Hours</th>
+                                    <th>Face Match</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {logs.length === 0 ? (
                                     <tr>
-                                        <td colSpan={7} style={{ textAlign: 'center', padding: '3rem' }}>
+                                        <td colSpan={8} style={{ textAlign: 'center', padding: '3rem' }}>
                                             <div style={{ color: 'var(--text-muted)' }}>No attendance logs found matching filters</div>
                                         </td>
                                     </tr>
@@ -228,8 +233,8 @@ export default function AttendanceLogs() {
                                             </td>
                                             <td>
                                                 <div style={{ fontWeight: 500 }}>{log.employee_name}</div>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{log.emp_code}</div>
                                             </td>
-                                            <td><span style={{ fontFamily: 'monospace' }}>{log.emp_code}</span></td>
                                             <td>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                                     <Clock size={14} style={{ color: '#059669' }} />
@@ -246,6 +251,20 @@ export default function AttendanceLogs() {
                                                 <span className={`badge ${log.status === 'present' ? 'badge-success' : 'badge-warning'}`}>
                                                     {log.status.toUpperCase()}
                                                 </span>
+                                            </td>
+                                            <td>
+                                                {log.total_hours_worked > 0 ? (
+                                                    <span style={{ fontWeight: 500 }}>{log.total_hours_worked} hrs</span>
+                                                ) : '-'}
+                                            </td>
+                                            <td>
+                                                {(log.ot_hours > 0 || log.ot_weekend_hours > 0 || log.ot_holiday_hours > 0) ? (
+                                                    <div style={{ fontSize: '0.75rem' }}>
+                                                        {log.ot_hours > 0 && <div>Reg: {log.ot_hours}</div>}
+                                                        {log.ot_weekend_hours > 0 && <div>Wknd: {log.ot_weekend_hours}</div>}
+                                                        {log.ot_holiday_hours > 0 && <div>Hol: {log.ot_holiday_hours}</div>}
+                                                    </div>
+                                                ) : '-'}
                                             </td>
                                             <td>
                                                 {log.confidence ? (

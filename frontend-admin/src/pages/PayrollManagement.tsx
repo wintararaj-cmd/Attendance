@@ -16,6 +16,7 @@ interface Employee {
 interface PayrollData {
     employee_id: string;
     employee_name: string;
+    employee_type?: string;
     month: string;
     present_days: number;
     payroll: {
@@ -24,14 +25,45 @@ interface PayrollData {
             hra: number;
             gross_earned: number;
             special: number;
+            conveyance: number;
+            medical: number;
+            education: number;
+            other: number;
+            bonus: number;
+            incentive: number;
+            overtime_regular: number;
+            overtime_weekend: number;
+            overtime_holiday: number;
+            overtime_total: number;
+            gross_salary: number;
         };
         deductions: {
             pf: number;
             prof_tax: number;
             lop: number;
             total: number;
+            esi: number;
+            tds: number;
         };
         net_salary: number;
+        ctc: number;
+    };
+    attendance: {
+        total_days: number;
+        present_days: number;
+        unpaid_leaves: number;
+        ot_hours: number;
+        ot_weekend_hours: number;
+        ot_holiday_hours: number;
+        total_hours_worked: number;
+    };
+    rates: {
+        hourly_rate: number | null;
+        contract_rate_per_day: number | null;
+        base_hourly_rate: number;
+        ot_rate_multiplier: number;
+        ot_weekend_multiplier: number;
+        ot_holiday_multiplier: number;
     };
 }
 
@@ -804,24 +836,69 @@ export default function PayrollManagement() {
                                     Earnings
                                 </h4>
                                 <div style={{ fontSize: '0.9rem' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                        <span>Basic Salary</span>
-                                        <span style={{ fontWeight: 500 }}>₹{selectedPayroll.payroll.earnings.basic.toLocaleString('en-IN')}</span>
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                        <span>HRA</span>
-                                        <span style={{ fontWeight: 500 }}>₹{selectedPayroll.payroll.earnings.hra.toLocaleString('en-IN')}</span>
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                                        <span>Special Allowance</span>
-                                        <span style={{ fontWeight: 500 }}>₹{selectedPayroll.payroll.earnings.special.toLocaleString('en-IN')}</span>
-                                    </div>
-                                    <div style={{ borderTop: '2px solid #059669', paddingTop: '0.5rem', fontWeight: 600, display: 'flex', justifyContent: 'space-between', color: '#059669' }}>
+                                    {selectedPayroll.rates.hourly_rate ? (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                            <span>Hourly Pay ({selectedPayroll.attendance.total_hours_worked} hrs @ ₹{selectedPayroll.rates.hourly_rate}/hr)</span>
+                                            <span style={{ fontWeight: 500 }}>₹{(selectedPayroll.rates.hourly_rate * selectedPayroll.attendance.total_hours_worked).toLocaleString('en-IN')}</span>
+                                        </div>
+                                    ) : selectedPayroll.rates.contract_rate_per_day ? (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                            <span>Daily Pay ({selectedPayroll.attendance.present_days} days @ ₹{selectedPayroll.rates.contract_rate_per_day}/day)</span>
+                                            <span style={{ fontWeight: 500 }}>₹{(selectedPayroll.rates.contract_rate_per_day * selectedPayroll.attendance.present_days).toLocaleString('en-IN')}</span>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                                <span>Basic Salary</span>
+                                                <span style={{ fontWeight: 500 }}>₹{selectedPayroll.payroll.earnings.basic.toLocaleString('en-IN')}</span>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                                <span>HRA</span>
+                                                <span style={{ fontWeight: 500 }}>₹{selectedPayroll.payroll.earnings.hra.toLocaleString('en-IN')}</span>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                                                <span>Special Allowance</span>
+                                                <span style={{ fontWeight: 500 }}>₹{selectedPayroll.payroll.earnings.special.toLocaleString('en-IN')}</span>
+                                            </div>
+                                        </>
+                                    )}
+
+                                    {/* Overtime Section */}
+                                    {(selectedPayroll.attendance.ot_hours > 0 || selectedPayroll.attendance.ot_weekend_hours > 0 || selectedPayroll.attendance.ot_holiday_hours > 0) && (
+                                        <div style={{ marginTop: '0.75rem', padding: '0.5rem', background: '#ecfdf5', borderRadius: '4px' }}>
+                                            <div style={{ fontWeight: 600, color: '#059669', marginBottom: '0.25rem' }}>Overtime Earnings</div>
+                                            {selectedPayroll.attendance.ot_hours > 0 && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                                                    <span>Regular ({selectedPayroll.attendance.ot_hours} hrs)</span>
+                                                    <span>₹{selectedPayroll.payroll.earnings.overtime_regular.toLocaleString('en-IN')}</span>
+                                                </div>
+                                            )}
+                                            {selectedPayroll.attendance.ot_weekend_hours > 0 && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                                                    <span>Weekend ({selectedPayroll.attendance.ot_weekend_hours} hrs)</span>
+                                                    <span>₹{selectedPayroll.payroll.earnings.overtime_weekend.toLocaleString('en-IN')}</span>
+                                                </div>
+                                            )}
+                                            {selectedPayroll.attendance.ot_holiday_hours > 0 && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                                                    <span>Holiday ({selectedPayroll.attendance.ot_holiday_hours} hrs)</span>
+                                                    <span>₹{selectedPayroll.payroll.earnings.overtime_holiday.toLocaleString('en-IN')}</span>
+                                                </div>
+                                            )}
+                                            <div style={{ borderTop: '1px dashed #059669', marginTop: '0.25rem', paddingTop: '0.25rem', display: 'flex', justifyContent: 'space-between', fontWeight: 500 }}>
+                                                <span>Total OT</span>
+                                                <span>₹{selectedPayroll.payroll.earnings.overtime_total.toLocaleString('en-IN')}</span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div style={{ borderTop: '2px solid #059669', paddingTop: '0.5rem', marginTop: '0.75rem', fontWeight: 600, display: 'flex', justifyContent: 'space-between', color: '#059669' }}>
                                         <span>Gross Earned</span>
                                         <span>₹{selectedPayroll.payroll.earnings.gross_earned.toLocaleString('en-IN')}</span>
                                     </div>
                                 </div>
                             </div>
+
 
                             <div>
                                 <h4 style={{ color: '#dc2626', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -834,8 +911,16 @@ export default function PayrollManagement() {
                                         <span style={{ fontWeight: 500 }}>₹{selectedPayroll.payroll.deductions.pf.toLocaleString('en-IN')}</span>
                                     </div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                        <span>ESI</span>
+                                        <span style={{ fontWeight: 500 }}>₹{selectedPayroll.payroll.deductions.esi.toLocaleString('en-IN')}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                                         <span>Professional Tax</span>
                                         <span style={{ fontWeight: 500 }}>₹{selectedPayroll.payroll.deductions.prof_tax.toLocaleString('en-IN')}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                        <span>TDS</span>
+                                        <span style={{ fontWeight: 500 }}>₹{selectedPayroll.payroll.deductions.tds.toLocaleString('en-IN')}</span>
                                     </div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
                                         <span>Loss of Pay (LOP)</span>
@@ -847,6 +932,7 @@ export default function PayrollManagement() {
                                     </div>
                                 </div>
                             </div>
+
                         </div>
 
                         <div style={{
