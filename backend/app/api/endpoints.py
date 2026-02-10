@@ -1657,6 +1657,10 @@ async def delete_all_employees(
             }
         }
 
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete data: {str(e)}")
+
 @router.post("/debug/recalculate-hours")
 def recalculate_hours_today(
     db: Session = Depends(get_db),

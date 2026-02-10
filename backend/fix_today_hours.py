@@ -15,6 +15,7 @@ from app.models.models import AttendanceLog
 import datetime
 from datetime import timezone, timedelta
 
+
 def fix_hours():
     # Only if DATABASE_URL is set will it use Postgres
     db = SessionLocal()
@@ -22,48 +23,43 @@ def fix_hours():
         IST = timezone(timedelta(hours=5, minutes=30))
         today = datetime.datetime.now(IST).date()
         
-        # Debug: list all logs first
-        all_logs = db.query(AttendanceLog).limit(5).all()
-        print(f"DEBUG: Found {len(all_logs)} sample logs in DB.")
-        for l in all_logs:
-            print(f" - Log ID: {l.id}, Date: {l.date} (Type: {type(l.date)}), Check-out: {l.check_out}")
-
+        # Look back 7 days
+        start_date = today - timedelta(days=7)
+        print(f"Checking logs from {start_date} to {today}...")
+        
         logs = db.query(AttendanceLog).filter(
-            AttendanceLog.date == today
+            AttendanceLog.date >= start_date,
+            AttendanceLog.check_out != None
         ).all()
         
-        logs_with_checkout = [l for l in logs if l.check_out is not None]
+        print(f"Found {len(logs)} logs with checkout to update.")
         
-        print(f"Found {len(logs)} logs today, {len(logs_with_checkout)} with checkout.")
-        
-        for log in logs_with_checkout:
+        updated_count = 0
+        for log in logs:
             if log.check_in and log.check_out:
                 # Normalize check_in
                 c_in = log.check_in
-                # If naive, assume it's naive local time (so attach timezone)
-                # Or assume it matches valid awareness.
+                if c_in.tzinfo is None:
+                    c_in = c_in.replace(tzinfo=IST)
                 
                 # Normalize check_out
                 c_out = log.check_out
-                
-                # Force naive for subtraction if mixed, or force aware?
-                # Best is force aware for both.
-                if c_in.tzinfo is None:
-                    c_in = c_in.replace(tzinfo=IST)
                 if c_out.tzinfo is None:
                     c_out = c_out.replace(tzinfo=IST)
                 
                 duration = c_out - c_in
                 raw_hours = duration.total_seconds() / 3600
                 
-                # Deduct 0.5 hours
+                # Deduct 0.5 hours (30 mins break)
                 deduction = 0.5
                 net_hours = max(0, raw_hours - deduction)
                 
                 log.total_hours_worked = round(net_hours, 2)
                 
                 # OT Calc
-                is_weekend = today.weekday() >= 5
+                # Use log.date, not today, for correct weekend check
+                log_date = log.date
+                is_weekend = log_date.weekday() >= 5
                 standard_work = 8.0
                 
                 if is_weekend:
@@ -75,10 +71,11 @@ def fix_hours():
                     else:
                         log.ot_hours = 0
                 
-                print(f"Updated Log {log.id}: Raw={raw_hours:.2f}h, Net={net_hours:.2f}h, OT={log.ot_hours}h")
+                print(f"Updated Log {log.id} ({log_date}): Raw={raw_hours:.2f}h, Net={net_hours:.2f}h, OT={log.ot_hours}h")
+                updated_count += 1
                 
         db.commit()
-        print("Successfully updated today's logs.")
+        print(f"Successfully updated {updated_count} logs.")
         
     except Exception as e:
         print(f"Error: {e}")
@@ -86,6 +83,7 @@ def fix_hours():
         traceback.print_exc()
     finally:
         db.close()
+
 
 if __name__ == "__main__":
     fix_hours()
