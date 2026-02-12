@@ -46,6 +46,9 @@ RUN echo '#!/bin/bash\n\
     echo "[3/4] Applying payroll enhancements (part-time/contract/OT support)..."\n\
     python migrate_payroll_enhancements.py || echo "[WARN] Payroll enhancements migration had warnings..."\n\
     echo ""\n\
+    echo "[3.5/4] Seeding demo data..."\n\
+    python seed_data.py || echo "[WARN] Seeding had warnings..."\n\
+    echo ""\n\
     echo "[4/4] Starting application server..."\n\
     echo "============================================================"\n\
     exec uvicorn app.main:app --host 0.0.0.0 --port 8000\n\

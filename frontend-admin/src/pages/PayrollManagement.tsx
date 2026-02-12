@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Calculator, Download, X, Settings, DollarSign, Users, TrendingUp, Filter, Search } from 'lucide-react';
+import { Calculator, Download, X, Settings, DollarSign, Users, TrendingUp, Filter, Search, Eye, Save } from 'lucide-react';
 
 interface Employee {
     id: string;
@@ -106,6 +106,18 @@ export default function PayrollManagement() {
     const [processingId, setProcessingId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [departmentFilter, setDepartmentFilter] = useState('');
+    const [viewMode, setViewMode] = useState<'employees' | 'salary_sheet'>('employees');
+    const [payrollList, setPayrollList] = useState<any[]>([]);
+    const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+    const [generating, setGenerating] = useState(false);
+    const [payrollSummary, setPayrollSummary] = useState({
+        total_employees: 0,
+        total_gross_salary: 0,
+        total_net_salary: 0,
+        total_pf_deduction: 0,
+        total_esi_deduction: 0
+    });
 
     // Config Modal State
     const [showConfigModal, setShowConfigModal] = useState(false);
@@ -139,11 +151,62 @@ export default function PayrollManagement() {
 
     useEffect(() => {
         fetchEmployees();
+        fetchPayrollSummary();
     }, []);
+
+    const fetchPayrollSummary = async () => {
+        try {
+            const res = await axios.get('/api/v1/payroll/summary', {
+                params: { month: selectedMonth, year: selectedYear }
+            });
+            setPayrollSummary(res.data);
+        } catch (err) {
+            console.error("Failed to fetch payroll summary", err);
+        }
+    };
+
+    useEffect(() => {
+        if (viewMode === 'employees') {
+            fetchEmployees();
+        } else {
+            fetchPayrollList();
+        }
+        fetchPayrollSummary();
+    }, [viewMode, selectedMonth, selectedYear]);
 
     useEffect(() => {
         filterEmployees();
     }, [employees, searchTerm, departmentFilter]);
+
+    const fetchPayrollList = async () => {
+        try {
+            setLoading(true);
+            const res = await axios.get('/api/v1/payroll/list', {
+                params: { month: selectedMonth, year: selectedYear }
+            });
+            setPayrollList(res.data);
+        } catch (err) {
+            console.error("Failed to fetch payroll list", err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleGenerateAll = async () => {
+        if (!confirm(`Generate payroll for all employees for ${selectedMonth}/${selectedYear}?`)) return;
+        setGenerating(true);
+        try {
+            await axios.post('/api/v1/payroll/generate', { month: selectedMonth, year: selectedYear });
+            alert("Payroll generated successfully!");
+            fetchPayrollList();
+            fetchPayrollSummary();
+            if (viewMode === 'employees') setViewMode('salary_sheet');
+        } catch (err: any) {
+            alert("Failed to generate payroll: " + (err.response?.data?.detail || err.message));
+        } finally {
+            setGenerating(false);
+        }
+    };
 
     const fetchEmployees = async () => {
         try {
@@ -176,10 +239,12 @@ export default function PayrollManagement() {
     const handleRunPayroll = async (empId: string) => {
         setProcessingId(empId);
         try {
-            const res = await axios.get(`/api/v1/payroll/employee/${empId}`);
+            const res = await axios.get(`/api/v1/payroll/employee/${empId}`, {
+                params: { month: selectedMonth, year: selectedYear }
+            });
             setSelectedPayroll(res.data);
-        } catch (err) {
-            alert("Failed to calculate payroll. Ensure salary is configured.");
+        } catch (err: any) {
+            alert("Failed to calculate payroll: " + (err.response?.data?.detail || "Ensure salary is configured."));
         } finally {
             setProcessingId(null);
         }
@@ -235,10 +300,27 @@ export default function PayrollManagement() {
         }
     };
 
+    const handleGenerateSingle = async () => {
+        if (!selectedPayroll) return;
+        if (!confirm(`Generate and save payroll for ${selectedPayroll.employee_name}?`)) return;
+
+        try {
+            await axios.post(`/api/v1/payroll/generate/${selectedPayroll.employee_id}`, {
+                month: selectedMonth,
+                year: selectedYear
+            });
+            alert("Payroll generated and saved successfully!");
+            fetchPayrollSummary(); // Refresh summary stats
+        } catch (err: any) {
+            alert("Failed to generate payroll: " + (err.response?.data?.detail || err.message));
+        }
+    };
+
     const handleDownloadPdf = async () => {
         if (!selectedPayroll) return;
         try {
             const response = await axios.get(`/api/v1/payroll/payslip/${selectedPayroll.employee_id}/pdf`, {
+                params: { month: selectedMonth, year: selectedYear },
                 responseType: 'blob',
             });
 
@@ -255,12 +337,30 @@ export default function PayrollManagement() {
         }
     };
 
-    const calculateTotalPayroll = () => {
-        // This would ideally come from the backend
-        return filteredEmployees.length * 25000; // Placeholder
-    };
+
 
     const departments = Array.from(new Set(employees.map(e => e.department).filter(Boolean)));
+
+    const labelStyle = { fontSize: '0.85rem', fontWeight: 600, color: '#4b5563', display: 'block', marginBottom: '0.25rem' };
+    const modalOverlayStyle: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 };
+
+    const handleDownloadPayslip = async (empId: string, empName: string) => {
+        try {
+            const response = await axios.get(
+                `/api/v1/payroll/payslip/${empId}/pdf?month=${selectedMonth}&year=${selectedYear}`,
+                { responseType: 'blob' }
+            );
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Payslip_${empName.replace(' ', '_')}_${selectedMonth}_${selectedYear}.pdf`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (err: any) {
+            alert("Failed to download payslip. Ensure payroll is generated.");
+        }
+    };
 
     if (loading) return <div className="p-4">Loading...</div>;
 
@@ -275,8 +375,8 @@ export default function PayrollManagement() {
                 <div className="card" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
-                            <p style={{ margin: 0, opacity: 0.9, fontSize: '0.875rem' }}>Total Employees</p>
-                            <h2 style={{ margin: '0.5rem 0 0 0', fontSize: '2rem' }}>{employees.length}</h2>
+                            <p style={{ margin: 0, opacity: 0.9, fontSize: '0.875rem' }}>Total Processed</p>
+                            <h2 style={{ margin: '0.5rem 0 0 0', fontSize: '2rem' }}>{payrollSummary.total_employees}</h2>
                         </div>
                         <Users size={48} style={{ opacity: 0.3 }} />
                     </div>
@@ -285,9 +385,9 @@ export default function PayrollManagement() {
                 <div className="card" style={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: 'white' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
-                            <p style={{ margin: 0, opacity: 0.9, fontSize: '0.875rem' }}>Estimated Payroll</p>
+                            <p style={{ margin: 0, opacity: 0.9, fontSize: '0.875rem' }}>Total Net Payable</p>
                             <h2 style={{ margin: '0.5rem 0 0 0', fontSize: '2rem' }}>
-                                ₹{(calculateTotalPayroll() / 1000).toFixed(0)}K
+                                ₹{(payrollSummary.total_net_salary / 1000).toFixed(1)}K
                             </h2>
                         </div>
                         <DollarSign size={48} style={{ opacity: 0.3 }} />
@@ -297,9 +397,9 @@ export default function PayrollManagement() {
                 <div className="card" style={{ background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', color: 'white' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
-                            <p style={{ margin: 0, opacity: 0.9, fontSize: '0.875rem' }}>Avg Salary</p>
+                            <p style={{ margin: 0, opacity: 0.9, fontSize: '0.875rem' }}>PF / ESI Total</p>
                             <h2 style={{ margin: '0.5rem 0 0 0', fontSize: '2rem' }}>
-                                ₹{employees.length > 0 ? (calculateTotalPayroll() / employees.length / 1000).toFixed(0) : 0}K
+                                ₹{((payrollSummary.total_pf_deduction + payrollSummary.total_esi_deduction) / 1000).toFixed(1)}K
                             </h2>
                         </div>
                         <TrendingUp size={48} style={{ opacity: 0.3 }} />
@@ -307,124 +407,240 @@ export default function PayrollManagement() {
                 </div>
             </div>
 
-            {/* Filters */}
-            <div className="card" style={{ marginBottom: '1.5rem' }}>
-                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <div style={{ flex: 1, minWidth: '200px' }}>
-                        <div style={{ position: 'relative' }}>
-                            <Search size={18} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                            <input
-                                type="text"
-                                placeholder="Search by name or code..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                style={{ paddingLeft: '2.5rem', width: '100%' }}
-                                className="input"
-                            />
-                        </div>
-                    </div>
+            {/* Controls */}
+            <div className="card" style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                        className={`btn ${viewMode === 'employees' ? 'btn-primary' : ''}`}
+                        onClick={() => setViewMode('employees')}
+                        style={{ border: viewMode === 'employees' ? 'none' : '1px solid #ccc' }}
+                    >
+                        Employees
+                    </button>
+                    <button
+                        className={`btn ${viewMode === 'salary_sheet' ? 'btn-primary' : ''}`}
+                        onClick={() => setViewMode('salary_sheet')}
+                        style={{ border: viewMode === 'salary_sheet' ? 'none' : '1px solid #ccc' }}
+                    >
+                        Salary Sheet
+                    </button>
+                </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <Filter size={18} style={{ color: 'var(--text-muted)' }} />
-                        <select
-                            value={departmentFilter}
-                            onChange={(e) => setDepartmentFilter(e.target.value)}
+                <div style={{ width: '1px', height: '2rem', background: '#e5e7eb', margin: '0 0.5rem' }}></div>
+
+                <select
+                    value={selectedMonth}
+                    onChange={e => setSelectedMonth(Number(e.target.value))}
+                    className="input"
+                    style={{ width: '120px' }}
+                >
+                    {Array.from({ length: 12 }, (_, i) => (
+                        <option key={i + 1} value={i + 1}>{new Date(0, i).toLocaleString('default', { month: 'long' })}</option>
+                    ))}
+                </select>
+
+                <select
+                    value={selectedYear}
+                    onChange={e => setSelectedYear(Number(e.target.value))}
+                    className="input"
+                    style={{ width: '100px' }}
+                >
+                    <option value={2025}>2025</option>
+                    <option value={2026}>2026</option>
+                </select>
+
+                <div style={{ flex: 1 }}></div>
+
+                <button
+                    className="btn"
+                    onClick={handleGenerateAll}
+                    disabled={generating}
+                    style={{ background: '#059669', color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                >
+                    <Calculator size={18} />
+                    {generating ? 'Generating...' : 'Generate All Payroll'}
+                </button>
+            </div>
+            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ flex: 1, minWidth: '200px' }}>
+                    <div style={{ position: 'relative' }}>
+                        <Search size={18} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                        <input
+                            type="text"
+                            placeholder="Search by name or code..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            style={{ paddingLeft: '2.5rem', width: '100%' }}
                             className="input"
-                            style={{ minWidth: '150px' }}
-                        >
-                            <option value="">All Departments</option>
-                            {departments.map(dept => (
-                                <option key={dept} value={dept}>{dept}</option>
-                            ))}
-                        </select>
+                        />
                     </div>
                 </div>
 
-                <div style={{ marginTop: '0.75rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                    Showing {filteredEmployees.length} of {employees.length} employees
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Filter size={18} style={{ color: 'var(--text-muted)' }} />
+                    <select
+                        value={departmentFilter}
+                        onChange={(e) => setDepartmentFilter(e.target.value)}
+                        className="input"
+                        style={{ minWidth: '150px' }}
+                    >
+                        <option value="">All Departments</option>
+                        {departments.map(dept => (
+                            <option key={dept} value={dept}>{dept}</option>
+                        ))}
+                    </select>
                 </div>
             </div>
 
-            {/* Employee Table */}
-            <div className="card">
-                <div className="table-container">
-                    <table className="table">
-                        <thead>
-                            <tr>
-                                <th>Employee</th>
-                                <th>Code</th>
-                                <th>Department</th>
-                                <th>Designation</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredEmployees.length === 0 ? (
+            <div style={{ marginTop: '0.75rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                Showing {filteredEmployees.length} of {employees.length} employees
+            </div>
+
+            {viewMode === 'employees' ? (
+                /* ... employees table ... */
+                <div className="card">
+                    <div className="table-container">
+                        <table className="table">
+                            <thead>
                                 <tr>
-                                    <td colSpan={5} style={{ textAlign: 'center', padding: '2rem' }}>
-                                        <div style={{ color: 'var(--text-muted)' }}>No employees found</div>
-                                    </td>
+                                    <th>Employee</th>
+                                    <th>Code</th>
+                                    <th>Type</th>
+                                    <th>Department</th>
+                                    <th>Actions</th>
                                 </tr>
-                            ) : (
-                                filteredEmployees.map(emp => (
-                                    <tr key={emp.id}>
-                                        <td>
-                                            <div style={{ fontWeight: 500 }}>
-                                                {emp.first_name} {emp.last_name || ''}
-                                            </div>
+                            </thead>
+                            <tbody>
+                                {filteredEmployees.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                                            No employees found
                                         </td>
-                                        <td>
-                                            <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>
-                                                {emp.emp_code}
-                                            </span>
-                                        </td>
-                                        <td>{emp.department || '-'}</td>
-                                        <td>{emp.designation || '-'}</td>
-                                        <td>
-                                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    </tr>
+                                ) : (
+                                    filteredEmployees.map(emp => (
+                                        <tr key={emp.id}>
+                                            <td>
+                                                <div style={{ fontWeight: 500 }}>
+                                                    {emp.first_name} {emp.last_name || ''}
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{emp.emp_code}</span>
+                                            </td>
+                                            <td>
+                                                <span className={`badge ${emp.employee_type === 'contract' ? 'badge-warning' : 'badge-primary'}`}>
+                                                    {emp.employee_type || 'Staff'}
+                                                </span>
+                                            </td>
+                                            <td>{emp.department || '-'}</td>
+                                            <td>
                                                 <button
                                                     className="btn"
-                                                    style={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '0.5rem',
-                                                        fontSize: '0.875rem',
-                                                        padding: '0.5rem 0.75rem',
-                                                        background: '#f3f4f6'
-                                                    }}
+                                                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', padding: '0.4rem 0.6rem', background: '#f3f4f6' }}
                                                     onClick={() => handleOpenConfig(emp.id, `${emp.first_name} ${emp.last_name || ''}`)}
                                                 >
-                                                    <Settings size={16} />
-                                                    Configure
+                                                    <Settings size={14} /> Configure
                                                 </button>
                                                 <button
-                                                    className="btn btn-primary"
-                                                    style={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '0.5rem',
-                                                        fontSize: '0.875rem',
-                                                        padding: '0.5rem 0.75rem'
-                                                    }}
+                                                    className="btn"
+                                                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', padding: '0.4rem 0.6rem', background: '#dbeafe', color: '#1e40af', opacity: processingId === emp.id ? 0.7 : 1 }}
                                                     onClick={() => handleRunPayroll(emp.id)}
-                                                    disabled={!!processingId}
+                                                    disabled={processingId === emp.id}
+                                                    title="Preview Payroll"
                                                 >
-                                                    {processingId === emp.id ? 'Processing...' : (
+                                                    {processingId === emp.id ? (
+                                                        <span>...</span>
+                                                    ) : (
                                                         <>
-                                                            <Calculator size={16} />
-                                                            Calculate
+                                                            <Eye size={14} /> Preview
                                                         </>
                                                     )}
                                                 </button>
-                                            </div>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ) : (
+                /* Salary Sheet Table */
+                <div className="card">
+                    <div className="table-container" style={{ overflowX: 'auto' }}>
+                        <table className="table" style={{ fontSize: '0.85rem' }}>
+                            <thead>
+                                <tr style={{ background: '#f8fafc' }}>
+                                    <th>Code</th>
+                                    <th>Employee</th>
+                                    <th>Days</th>
+                                    <th>Gross</th>
+                                    <th>Basic</th>
+                                    <th>HRA</th>
+                                    <th>Conveyance</th>
+                                    <th>Other</th>
+                                    <th>OT</th>
+                                    <th style={{ borderLeft: '2px solid #ddd' }}>PF</th>
+                                    <th>ESI</th>
+                                    <th>PT</th>
+                                    <th style={{ background: '#fef08a', borderLeft: '1px solid #eab308', borderRight: '1px solid #eab308' }}>Welfare</th>
+                                    <th>Loan</th>
+                                    <th style={{ borderLeft: '2px solid #ddd' }}>Total Ded</th>
+                                    <th style={{ background: '#f0fdf4', fontWeight: 700 }}>NET SALARY</th>
+                                    <th style={{ textAlign: 'center' }}>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {payrollList.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={17} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                                            No payroll records generated for {new Date(0, selectedMonth - 1).toLocaleString('default', { month: 'long' })} {selectedYear}.
+                                            <br />
+                                            <span style={{ fontSize: '0.9rem' }}>Click "Generate All Payroll" to process.</span>
                                         </td>
                                     </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
+                                ) : (
+                                    payrollList.map(p => (
+                                        <tr key={p.id}>
+                                            <td style={{ fontFamily: 'monospace' }}>{p.emp_code}</td>
+                                            <td style={{ fontWeight: 500 }}>{p.employee_name}</td>
+                                            <td>{p.present_days}</td>
+                                            <td style={{ fontWeight: 600 }}>{p.gross_salary}</td>
+                                            <td>{p.basic_earned}</td>
+                                            <td>{p.hra_earned || 0}</td>
+                                            <td>{p.conveyance_earned || 0}</td>
+                                            <td>{p.other_allowances || 0}</td>
+                                            <td>{p.ot_amount || 0}</td>
+                                            <td style={{ borderLeft: '2px solid #eee' }}>{p.pf_amount || 0}</td>
+                                            <td>{p.esi_amount || 0}</td>
+                                            <td>{p.pt_amount || 0}</td>
+                                            <td style={{ background: '#fefce8', borderLeft: '1px solid #fef08a', borderRight: '1px solid #fef08a', fontWeight: 600 }}>
+                                                {p.welfare_fund || 0}
+                                            </td>
+                                            <td>{p.loan_deduction || 0}</td>
+                                            <td style={{ borderLeft: '2px solid #eee', color: '#dc2626' }}>{p.total_deductions}</td>
+                                            <td style={{ background: '#f0fdf4', fontWeight: 700, color: '#16a34a', fontSize: '1rem' }}>
+                                                {p.net_salary}
+                                            </td>
+                                            <td style={{ textAlign: 'center' }}>
+                                                <button
+                                                    onClick={() => handleDownloadPayslip(p.employee_id, p.employee_name)}
+                                                    className="btn btn-icon"
+                                                    title="Download Payslip"
+                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4f46e5' }}
+                                                >
+                                                    <Download size={16} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* Config Modal */}
             {showConfigModal && (
@@ -453,14 +669,17 @@ export default function PayrollManagement() {
                                     Employment Type & Rates
                                 </h4>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', gridColumn: 'span 2' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', gridColumn: 'span 2', padding: '1rem', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #bae6fd' }}>
                                         <input
                                             type="checkbox"
                                             checked={salaryForm.is_hourly_based}
                                             onChange={e => setSalaryForm({ ...salaryForm, is_hourly_based: e.target.checked })}
-                                            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                                            style={{ width: '20px', height: '20px', cursor: 'pointer' }}
                                         />
-                                        <span style={{ fontWeight: 500 }}>Is Hourly Based (Part-time)</span>
+                                        <div>
+                                            <span style={{ fontWeight: 600, display: 'block', color: '#0369a1' }}>Worker (Daily Rate Based)</span>
+                                            <span style={{ fontSize: '0.8rem', color: '#0c4a6e' }}>Check this for Daily Wages. Uncheck for Staff (Monthly Salary).</span>
+                                        </div>
                                     </label>
 
                                     {salaryForm.is_hourly_based && (
@@ -534,7 +753,7 @@ export default function PayrollManagement() {
                                 </h4>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                                     <div>
-                                        <label style={labelStyle}>Basic Salary *</label>
+                                        <label style={labelStyle}>Basic {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'} *</label>
                                         <input
                                             type="number"
                                             className="input"
@@ -544,7 +763,7 @@ export default function PayrollManagement() {
                                         />
                                     </div>
                                     <div>
-                                        <label style={labelStyle}>HRA</label>
+                                        <label style={labelStyle}>HRA {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'}</label>
                                         <input
                                             type="number"
                                             className="input"
@@ -554,7 +773,7 @@ export default function PayrollManagement() {
                                         />
                                     </div>
                                     <div>
-                                        <label style={labelStyle}>Conveyance Allowance</label>
+                                        <label style={labelStyle}>Conveyance {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'}</label>
                                         <input
                                             type="number"
                                             className="input"
@@ -564,7 +783,7 @@ export default function PayrollManagement() {
                                         />
                                     </div>
                                     <div>
-                                        <label style={labelStyle}>Medical Allowance</label>
+                                        <label style={labelStyle}>Medical {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'}</label>
                                         <input
                                             type="number"
                                             className="input"
@@ -574,7 +793,7 @@ export default function PayrollManagement() {
                                         />
                                     </div>
                                     <div>
-                                        <label style={labelStyle}>Special Allowance</label>
+                                        <label style={labelStyle}>Special {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'}</label>
                                         <input
                                             type="number"
                                             className="input"
@@ -584,7 +803,7 @@ export default function PayrollManagement() {
                                         />
                                     </div>
                                     <div>
-                                        <label style={labelStyle}>Education Allowance</label>
+                                        <label style={labelStyle}>Education {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'}</label>
                                         <input
                                             type="number"
                                             className="input"
@@ -594,7 +813,7 @@ export default function PayrollManagement() {
                                         />
                                     </div>
                                     <div>
-                                        <label style={labelStyle}>Other Allowance</label>
+                                        <label style={labelStyle}>Other {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'}</label>
                                         <input
                                             type="number"
                                             className="input"
@@ -604,6 +823,23 @@ export default function PayrollManagement() {
                                         />
                                     </div>
                                 </div>
+
+                                {salaryForm.is_hourly_based && (
+                                    <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#ecfeff', borderRadius: '6px', border: '1px solid #a5f3fc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ color: '#0e7490', fontWeight: 600 }}>Total Daily Rate:</span>
+                                        <span style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0891b2' }}>
+                                            ₹{(
+                                                (salaryForm.basic_salary || 0) +
+                                                (salaryForm.hra || 0) +
+                                                (salaryForm.conveyance_allowance || 0) +
+                                                (salaryForm.medical_allowance || 0) +
+                                                (salaryForm.special_allowance || 0) +
+                                                (salaryForm.education_allowance || 0) +
+                                                (salaryForm.other_allowance || 0)
+                                            ).toFixed(2)}
+                                        </span>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Deductions Section */}
@@ -804,185 +1040,177 @@ export default function PayrollManagement() {
                         </div>
                     </div>
                 </div>
-            )}
+            )
+            }
 
             {/* Payslip Modal */}
-            {selectedPayroll && (
-                <div style={modalOverlayStyle}>
-                    <div className="card" style={{ width: '550px', maxHeight: '90vh', overflowY: 'auto' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                            <h3 style={{ margin: 0 }}>Payslip Preview</h3>
-                            <button onClick={() => setSelectedPayroll(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-                                <X size={24} />
-                            </button>
-                        </div>
-
-                        <div style={{ textAlign: 'center', marginBottom: '1.5rem', paddingBottom: '1.5rem', borderBottom: '2px solid #e2e8f0' }}>
-                            <h2 style={{ fontSize: '1.5rem', margin: '0 0 0.5rem 0', color: 'var(--primary)' }}>
-                                {selectedPayroll.employee_name}
-                            </h2>
-                            <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '0.5rem' }}>
-                                {selectedPayroll.month}
+            {
+                selectedPayroll && (
+                    <div style={modalOverlayStyle}>
+                        <div className="card" style={{ width: '550px', maxHeight: '90vh', overflowY: 'auto' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                                <h3 style={{ margin: 0 }}>Payslip Preview</h3>
+                                <button onClick={() => setSelectedPayroll(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                                    <X size={24} />
+                                </button>
                             </div>
-                            <div className="badge badge-success" style={{ fontSize: '0.875rem' }}>
-                                Present Days: {selectedPayroll.present_days} / 30
-                            </div>
-                        </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '1.5rem' }}>
-                            <div>
-                                <h4 style={{ color: '#059669', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    <TrendingUp size={18} />
-                                    Earnings
-                                </h4>
-                                <div style={{ fontSize: '0.9rem' }}>
-                                    {selectedPayroll.rates.hourly_rate ? (
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                            <span>Hourly Pay ({selectedPayroll.attendance.total_hours_worked} hrs @ ₹{selectedPayroll.rates.hourly_rate}/hr)</span>
-                                            <span style={{ fontWeight: 500 }}>₹{(selectedPayroll.rates.hourly_rate * selectedPayroll.attendance.total_hours_worked).toLocaleString('en-IN')}</span>
-                                        </div>
-                                    ) : selectedPayroll.rates.contract_rate_per_day ? (
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                            <span>Daily Pay ({selectedPayroll.attendance.present_days} days @ ₹{selectedPayroll.rates.contract_rate_per_day}/day)</span>
-                                            <span style={{ fontWeight: 500 }}>₹{(selectedPayroll.rates.contract_rate_per_day * selectedPayroll.attendance.present_days).toLocaleString('en-IN')}</span>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                                <span>Basic Salary</span>
-                                                <span style={{ fontWeight: 500 }}>₹{selectedPayroll.payroll.earnings.basic.toLocaleString('en-IN')}</span>
-                                            </div>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                                <span>HRA</span>
-                                                <span style={{ fontWeight: 500 }}>₹{selectedPayroll.payroll.earnings.hra.toLocaleString('en-IN')}</span>
-                                            </div>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                                                <span>Special Allowance</span>
-                                                <span style={{ fontWeight: 500 }}>₹{selectedPayroll.payroll.earnings.special.toLocaleString('en-IN')}</span>
-                                            </div>
-                                        </>
-                                    )}
-
-                                    {/* Overtime Section */}
-                                    {(selectedPayroll.attendance.ot_hours > 0 || selectedPayroll.attendance.ot_weekend_hours > 0 || selectedPayroll.attendance.ot_holiday_hours > 0) && (
-                                        <div style={{ marginTop: '0.75rem', padding: '0.5rem', background: '#ecfdf5', borderRadius: '4px' }}>
-                                            <div style={{ fontWeight: 600, color: '#059669', marginBottom: '0.25rem' }}>Overtime Earnings</div>
-                                            {selectedPayroll.attendance.ot_hours > 0 && (
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-                                                    <span>Regular ({selectedPayroll.attendance.ot_hours} hrs)</span>
-                                                    <span>₹{selectedPayroll.payroll.earnings.overtime_regular.toLocaleString('en-IN')}</span>
-                                                </div>
-                                            )}
-                                            {selectedPayroll.attendance.ot_weekend_hours > 0 && (
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-                                                    <span>Weekend ({selectedPayroll.attendance.ot_weekend_hours} hrs)</span>
-                                                    <span>₹{selectedPayroll.payroll.earnings.overtime_weekend.toLocaleString('en-IN')}</span>
-                                                </div>
-                                            )}
-                                            {selectedPayroll.attendance.ot_holiday_hours > 0 && (
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-                                                    <span>Holiday ({selectedPayroll.attendance.ot_holiday_hours} hrs)</span>
-                                                    <span>₹{selectedPayroll.payroll.earnings.overtime_holiday.toLocaleString('en-IN')}</span>
-                                                </div>
-                                            )}
-                                            <div style={{ borderTop: '1px dashed #059669', marginTop: '0.25rem', paddingTop: '0.25rem', display: 'flex', justifyContent: 'space-between', fontWeight: 500 }}>
-                                                <span>Total OT</span>
-                                                <span>₹{selectedPayroll.payroll.earnings.overtime_total.toLocaleString('en-IN')}</span>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    <div style={{ borderTop: '2px solid #059669', paddingTop: '0.5rem', marginTop: '0.75rem', fontWeight: 600, display: 'flex', justifyContent: 'space-between', color: '#059669' }}>
-                                        <span>Gross Earned</span>
-                                        <span>₹{selectedPayroll.payroll.earnings.gross_earned.toLocaleString('en-IN')}</span>
-                                    </div>
+                            <div style={{ textAlign: 'center', marginBottom: '1.5rem', paddingBottom: '1.5rem', borderBottom: '2px solid #e2e8f0' }}>
+                                <h2 style={{ fontSize: '1.5rem', margin: '0 0 0.5rem 0', color: 'var(--primary)' }}>
+                                    {selectedPayroll.employee_name}
+                                </h2>
+                                <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '0.5rem' }}>
+                                    {selectedPayroll.month}
+                                </div>
+                                <div className="badge badge-success" style={{ fontSize: '0.875rem' }}>
+                                    Present Days: {selectedPayroll.present_days} / 30
                                 </div>
                             </div>
 
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '1.5rem' }}>
+                                <div>
+                                    <h4 style={{ color: '#059669', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <TrendingUp size={18} />
+                                        Earnings
+                                    </h4>
+                                    <div style={{ fontSize: '0.9rem' }}>
+                                        {selectedPayroll.rates?.hourly_rate ? (
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                                <span>Hourly Pay ({(selectedPayroll.attendance?.total_hours_worked || 0)} hrs @ ₹{selectedPayroll.rates.hourly_rate}/hr)</span>
+                                                <span style={{ fontWeight: 500 }}>₹{(selectedPayroll.rates.hourly_rate * (selectedPayroll.attendance?.total_hours_worked || 0)).toLocaleString('en-IN')}</span>
+                                            </div>
+                                        ) : selectedPayroll.rates?.contract_rate_per_day ? (
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                                <span>Daily Pay ({(selectedPayroll.attendance?.present_days || 0)} days @ ₹{selectedPayroll.rates.contract_rate_per_day}/day)</span>
+                                                <span style={{ fontWeight: 500 }}>₹{(selectedPayroll.rates.contract_rate_per_day * (selectedPayroll.attendance?.present_days || 0)).toLocaleString('en-IN')}</span>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                                    <span>Basic Salary</span>
+                                                    <span style={{ fontWeight: 500 }}>₹{(selectedPayroll.payroll?.earnings?.basic || 0).toLocaleString('en-IN')}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                                    <span>HRA</span>
+                                                    <span style={{ fontWeight: 500 }}>₹{(selectedPayroll.payroll?.earnings?.hra || 0).toLocaleString('en-IN')}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                                                    <span>Special Allowance</span>
+                                                    <span style={{ fontWeight: 500 }}>₹{(selectedPayroll.payroll?.earnings?.special || 0).toLocaleString('en-IN')}</span>
+                                                </div>
+                                            </>
+                                        )}
 
-                            <div>
-                                <h4 style={{ color: '#dc2626', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    <DollarSign size={18} />
-                                    Deductions
-                                </h4>
-                                <div style={{ fontSize: '0.9rem' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                        <span>Provident Fund</span>
-                                        <span style={{ fontWeight: 500 }}>₹{selectedPayroll.payroll.deductions.pf.toLocaleString('en-IN')}</span>
+                                        {/* Overtime Section */}
+                                        {((selectedPayroll.attendance?.ot_hours || 0) > 0 || (selectedPayroll.attendance?.ot_weekend_hours || 0) > 0 || (selectedPayroll.attendance?.ot_holiday_hours || 0) > 0) && (
+                                            <div style={{ marginTop: '0.75rem', padding: '0.5rem', background: '#ecfdf5', borderRadius: '4px' }}>
+                                                <div style={{ fontWeight: 600, color: '#059669', marginBottom: '0.25rem' }}>Overtime Earnings</div>
+                                                {(selectedPayroll.attendance?.ot_hours || 0) > 0 && (
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                                                        <span>Regular ({(selectedPayroll.attendance?.ot_hours || 0)} hrs)</span>
+                                                        <span>₹{(selectedPayroll.payroll?.earnings?.overtime_regular || 0).toLocaleString('en-IN')}</span>
+                                                    </div>
+                                                )}
+                                                {(selectedPayroll.attendance?.ot_weekend_hours || 0) > 0 && (
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                                                        <span>Weekend ({(selectedPayroll.attendance?.ot_weekend_hours || 0)} hrs)</span>
+                                                        <span>₹{(selectedPayroll.payroll?.earnings?.overtime_weekend || 0).toLocaleString('en-IN')}</span>
+                                                    </div>
+                                                )}
+                                                {(selectedPayroll.attendance?.ot_holiday_hours || 0) > 0 && (
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                                                        <span>Holiday ({(selectedPayroll.attendance?.ot_holiday_hours || 0)} hrs)</span>
+                                                        <span>₹{(selectedPayroll.payroll?.earnings?.overtime_holiday || 0).toLocaleString('en-IN')}</span>
+                                                    </div>
+                                                )}
+                                                <div style={{ borderTop: '1px dashed #059669', marginTop: '0.25rem', paddingTop: '0.25rem', display: 'flex', justifyContent: 'space-between', fontWeight: 500 }}>
+                                                    <span>Total OT</span>
+                                                    <span>₹{(selectedPayroll.payroll?.earnings?.overtime_total || 0).toLocaleString('en-IN')}</span>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div style={{ borderTop: '2px solid #059669', paddingTop: '0.5rem', marginTop: '0.75rem', fontWeight: 600, display: 'flex', justifyContent: 'space-between', color: '#059669' }}>
+                                            <span>Gross Earned</span>
+                                            <span>₹{(selectedPayroll.payroll?.earnings?.gross_earned || 0).toLocaleString('en-IN')}</span>
+                                        </div>
                                     </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                        <span>ESI</span>
-                                        <span style={{ fontWeight: 500 }}>₹{selectedPayroll.payroll.deductions.esi.toLocaleString('en-IN')}</span>
+                                </div>
+
+
+                                <div>
+                                    <h4 style={{ color: '#dc2626', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <DollarSign size={18} />
+                                        Deductions
+                                    </h4>
+                                    <div style={{ fontSize: '0.9rem' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                            <span>Provident Fund</span>
+                                            <span style={{ fontWeight: 500 }}>₹{(selectedPayroll.payroll?.deductions?.pf || 0).toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                            <span>ESI</span>
+                                            <span style={{ fontWeight: 500 }}>₹{(selectedPayroll.payroll?.deductions?.esi || 0).toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                            <span>Professional Tax</span>
+                                            <span style={{ fontWeight: 500 }}>₹{(selectedPayroll.payroll?.deductions?.prof_tax || 0).toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                            <span>TDS</span>
+                                            <span style={{ fontWeight: 500 }}>₹{(selectedPayroll.payroll?.deductions?.tds || 0).toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                                            <span>Loss of Pay (LOP)</span>
+                                            <span style={{ fontWeight: 500 }}>₹{(selectedPayroll.payroll?.deductions?.lop || 0).toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div style={{ borderTop: '2px solid #dc2626', paddingTop: '0.5rem', fontWeight: 600, display: 'flex', justifyContent: 'space-between', color: '#dc2626' }}>
+                                            <span>Total Deductions</span>
+                                            <span>₹{(selectedPayroll.payroll?.deductions?.total || 0).toLocaleString('en-IN')}</span>
+                                        </div>
                                     </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                        <span>Professional Tax</span>
-                                        <span style={{ fontWeight: 500 }}>₹{selectedPayroll.payroll.deductions.prof_tax.toLocaleString('en-IN')}</span>
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                        <span>TDS</span>
-                                        <span style={{ fontWeight: 500 }}>₹{selectedPayroll.payroll.deductions.tds.toLocaleString('en-IN')}</span>
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                                        <span>Loss of Pay (LOP)</span>
-                                        <span style={{ fontWeight: 500 }}>₹{selectedPayroll.payroll.deductions.lop.toLocaleString('en-IN')}</span>
-                                    </div>
-                                    <div style={{ borderTop: '2px solid #dc2626', paddingTop: '0.5rem', fontWeight: 600, display: 'flex', justifyContent: 'space-between', color: '#dc2626' }}>
-                                        <span>Total Deductions</span>
-                                        <span>₹{selectedPayroll.payroll.deductions.total.toLocaleString('en-IN')}</span>
-                                    </div>
+                                </div>
+
+                            </div>
+
+                            <div style={{
+                                marginTop: '1.5rem',
+                                padding: '1.5rem',
+                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                borderRadius: '12px',
+                                textAlign: 'center',
+                                color: 'white'
+                            }}>
+                                <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>
+                                    Net Salary Payable
+                                </div>
+                                <div style={{ fontSize: '2.5rem', fontWeight: 'bold' }}>
+                                    ₹{(selectedPayroll.payroll?.net_salary || 0).toLocaleString('en-IN')}
                                 </div>
                             </div>
 
-                        </div>
-
-                        <div style={{
-                            marginTop: '1.5rem',
-                            padding: '1.5rem',
-                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                            borderRadius: '12px',
-                            textAlign: 'center',
-                            color: 'white'
-                        }}>
-                            <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>
-                                Net Salary Payable
+                            <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+                                <button
+                                    className="btn"
+                                    style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '0.5rem', padding: '0.75rem', background: '#ecfdf5', color: '#059669', border: '1px solid #059669' }}
+                                    onClick={handleGenerateSingle}
+                                >
+                                    <Save size={18} /> Approve &amp; Save
+                                </button>
+                                <button
+                                    className="btn btn-primary"
+                                    style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '0.5rem', padding: '0.75rem' }}
+                                    onClick={handleDownloadPdf}
+                                >
+                                    <Download size={18} /> Download PDF
+                                </button>
                             </div>
-                            <div style={{ fontSize: '2.5rem', fontWeight: 'bold' }}>
-                                ₹{selectedPayroll.payroll.net_salary.toLocaleString('en-IN')}
-                            </div>
                         </div>
-
-                        <button
-                            className="btn btn-primary"
-                            style={{ width: '100%', marginTop: '1.5rem', display: 'flex', justifyContent: 'center', gap: '0.5rem', padding: '0.75rem' }}
-                            onClick={handleDownloadPdf}
-                        >
-                            <Download size={18} /> Download Payslip PDF
-                        </button>
                     </div>
-                </div>
-            )}
+                )
+            }
         </div>
     );
 }
 
-const modalOverlayStyle: React.CSSProperties = {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1000,
-    backdropFilter: 'blur(4px)'
-};
 
-const labelStyle: React.CSSProperties = {
-    display: 'block',
-    fontSize: '0.875rem',
-    fontWeight: 500,
-    color: '#374151',
-    marginBottom: '0.5rem'
-};

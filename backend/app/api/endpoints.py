@@ -20,7 +20,7 @@ from ..services.payroll import payroll_service
 from ..services.auth import auth_service, SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 from ..core.database import get_db, engine
 from ..models import models
-from ..models.models import Employee, AttendanceLog, SalaryStructure, AdminUser, Department
+from ..models.models import Employee, AttendanceLog, SalaryStructure, AdminUser, Department, Payroll, PayrollStatus
 from jose import JWTError, jwt
 
 
@@ -561,7 +561,17 @@ async def mark_checkout(
                     else:
                         # Weekday OT
                         if net_hours > standard_work_hours:
-                            existing_log.ot_hours = round(net_hours - standard_work_hours, 2)
+                            raw_ot = net_hours - standard_work_hours
+                            
+                            # Rule: Minimum 2 hours OT required
+                            if raw_ot < 2.0:
+                                existing_log.ot_hours = 0.0
+                            # Rule: OT slots of 2 hours.
+                            elif raw_ot < 4.0:
+                                existing_log.ot_hours = 2.0
+                            # Rule: Maximum OT cap at 4 hours
+                            else:
+                                existing_log.ot_hours = 4.0
                         else:
                             existing_log.ot_hours = 0.0
                             
@@ -596,34 +606,41 @@ def get_employees(
     db: Session = Depends(get_db)
 ):
     """Get all employees with optional filters"""
-    query = db.query(Employee)
-    
-    if department:
-        query = query.filter(Employee.department == department)
-    if employee_type:
-        query = query.filter(Employee.employee_type == employee_type)
-    if status:
-        query = query.filter(Employee.status == status)
-    
-    employees = query.all()
-    
-    # Return with formatted data (safe attribute access for new fields)
-    return [{
-        "id": emp.id,
-        "emp_code": emp.emp_code,
-        "first_name": emp.first_name,
-        "last_name": emp.last_name,
-        "full_name": f"{emp.first_name} {emp.last_name or ''}".strip(),
-        "mobile_no": emp.mobile_no,
-        "email": getattr(emp, 'email', None),
-        "department": getattr(emp, 'department', None),
-        "designation": getattr(emp, 'designation', None),
-        "employee_type": getattr(emp, 'employee_type', 'full_time'),
-        "joining_date": getattr(emp, 'joining_date', None).isoformat() if getattr(emp, 'joining_date', None) else None,
-        "status": getattr(emp, 'status', 'active'),
-        "is_face_registered": emp.is_face_registered,
-        "created_at": getattr(emp, 'created_at', None).isoformat() if getattr(emp, 'created_at', None) else None
-    } for emp in employees]
+    try:
+        query = db.query(Employee)
+        
+        if department:
+            query = query.filter(Employee.department == department)
+        if employee_type:
+            query = query.filter(Employee.employee_type == employee_type)
+        if status:
+            query = query.filter(Employee.status == status)
+        
+        employees = query.all()
+        
+        # Return with formatted data (safe attribute access for new fields)
+        return [{
+            "id": emp.id,
+            "emp_code": emp.emp_code,
+            "first_name": emp.first_name,
+            "last_name": emp.last_name,
+            "full_name": f"{emp.first_name} {emp.last_name or ''}".strip(),
+            "mobile_no": emp.mobile_no,
+            "email": getattr(emp, 'email', None),
+            "department": getattr(emp, 'department', None),
+            "designation": getattr(emp, 'designation', None),
+            "employee_type": getattr(emp, 'employee_type', 'full_time'),
+            "joining_date": getattr(emp, 'joining_date', None).isoformat() if getattr(emp, 'joining_date', None) else None,
+            "status": getattr(emp, 'status', 'active'),
+            "is_face_registered": emp.is_face_registered,
+            "created_at": getattr(emp, 'created_at', None).isoformat() if getattr(emp, 'created_at', None) else None
+        } for emp in employees]
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        logger.error(f"Error fetching employees: {e}\n{error_trace}")
+        print(f"Error fetching employees: {e}\n{error_trace}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/employees/{emp_id}")
 def get_employee_by_id(emp_id: str, db: Session = Depends(get_db)):
@@ -764,85 +781,464 @@ async def calculate_payroll(
 
 @router.get("/dashboard/stats")
 def get_dashboard_stats(db: Session = Depends(get_db)):
-    from sqlalchemy import func
-    
-    total_employees = db.query(Employee).filter(Employee.status == 'active').count()
-    
-    today = datetime.date.today()
-    
-    # query distinct employees present today
-    present_query = db.query(AttendanceLog.employee_id).filter(
-        AttendanceLog.date == today,
-        AttendanceLog.status == "present"
-    ).distinct()
-    
-    present_count = present_query.count()
-    
-    # Simple logic: Absent = Total - Present (ignoring leaves/shifts for now)
-    absent_count = max(0, total_employees - present_count)
+    try:
+        from sqlalchemy import func
+        
+        total_employees = db.query(Employee).filter(Employee.status == 'active').count()
+        
+        today = datetime.date.today()
+        
+        # query distinct employees present today
+        present_query = db.query(AttendanceLog.employee_id).filter(
+            AttendanceLog.date == today,
+            AttendanceLog.status == "present"
+        ).distinct()
+        
+        present_count = present_query.count()
+        
+        # Simple logic: Absent = Total - Present (ignoring leaves/shifts for now)
+        absent_count = max(0, total_employees - present_count)
 
-    # Fetch recent logs for the dashboard widget
-    logs = db.query(AttendanceLog).join(Employee).order_by(AttendanceLog.check_in.desc()).limit(10).all()
-    recent_activity = []
-    for log in logs:
-        recent_activity.append({
-            "id": log.id,
-            "employee_name": f"{log.employee.first_name} {log.employee.last_name or ''}",
-            "emp_code": log.employee.emp_code,
-            "department": getattr(log.employee, 'department', None),
-            "time": log.check_in.strftime("%I:%M %p") if log.check_in else "--:--",
-            "status": log.status
-        })
-    
-    # Department breakdown (safe query for new columns)
-    department_breakdown = []
-    try:
-        dept_stats = db.query(
-            Employee.department,
-            func.count(Employee.id).label('count')
-        ).filter(
-            Employee.status == 'active'
-        ).group_by(Employee.department).all()
+        # Fetch recent logs for the dashboard widget
+        logs = db.query(AttendanceLog).join(Employee).order_by(AttendanceLog.check_in.desc()).limit(10).all()
+        recent_activity = []
+        for log in logs:
+            recent_activity.append({
+                "id": log.id,
+                "employee_name": f"{log.employee.first_name} {log.employee.last_name or ''}",
+                "emp_code": log.employee.emp_code,
+                "department": getattr(log.employee, 'department', None),
+                "time": log.check_in.strftime("%I:%M %p") if log.check_in else "--:--",
+                "status": log.status
+            })
         
-        department_breakdown = [{
-            "department": dept or "Unassigned",
-            "count": count
-        } for dept, count in dept_stats]
+        # Department breakdown (safe query for new columns)
+        department_breakdown = []
+        try:
+            dept_stats = db.query(
+                Employee.department,
+                func.count(Employee.id).label('count')
+            ).filter(
+                Employee.status == 'active'
+            ).group_by(Employee.department).all()
+            
+            department_breakdown = [{
+                "department": dept or "Unassigned",
+                "count": count
+            } for dept, count in dept_stats]
+        except Exception:
+            pass
+
+        return {
+            "total_employees": total_employees,
+            "present_today": present_count,
+            "absent_today": absent_count,
+            "recent_activity": recent_activity,
+            "department_breakdown": department_breakdown, # Fixed key name to match frontend expectation
+            "employee_type_breakdown": [] # TODO: Add this stats query
+        }
     except Exception as e:
-        print(f"⚠️ Department stats query failed (columns may not exist yet): {e}")
-        department_breakdown = [{"department": "All", "count": total_employees}]
+        import traceback
+        error_trace = traceback.format_exc()
+        logger.error(f"Error fetching dashboard stats: {e}\n{error_trace}")
+        print(f"Error fetching dashboard stats: {e}\n{error_trace}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/payroll/generate")
+def generate_payroll(
+    month: int = Body(..., ge=1, le=12),
+    year: int = Body(..., ge=2000, le=2100),
+    db: Session = Depends(get_db)
+):
+    """
+    Generate payroll for all active employees for a specific month/year.
+    Calculates salaries based on attendance logs.
+    """
+    from sqlalchemy import extract
+    import calendar
     
-    # Employee type breakdown (safe query for new columns)
-    employee_type_breakdown = []
-    try:
-        type_stats = db.query(
-            Employee.employee_type,
-            func.count(Employee.id).label('count')
-        ).filter(
-            Employee.status == 'active'
-        ).group_by(Employee.employee_type).all()
-        
-        employee_type_breakdown = [{
-            "type": emp_type or "full_time",
-            "count": count
-        } for emp_type, count in type_stats]
-    except Exception as e:
-        print(f"⚠️ Employee type stats query failed (columns may not exist yet): {e}")
-        employee_type_breakdown = [{"type": "full_time", "count": total_employees}]
+    # 1. Get all active employees with salary structure
+    employees = db.query(Employee).filter(
+        Employee.status == 'active'
+    ).all()
+    
+    generated_count = 0
+    errors = []
+    
+    total_days_in_month = calendar.monthrange(year, month)[1]
+    
+    for emp in employees:
+        try:
+            if not emp.salary_structure:
+                errors.append(f"Skipped {emp.emp_code}: No salary structure found")
+                continue
+                
+            # 2. Fetch Attendance Logs for the month
+            logs = db.query(AttendanceLog).filter(
+                AttendanceLog.employee_id == emp.id,
+                extract('month', AttendanceLog.date) == month,
+                extract('year', AttendanceLog.date) == year
+            ).all()
+            
+            # 3. Aggregate Attendance
+            # Create a map of date -> log for quick lookup
+            logs_by_date = {log.date: log for log in logs}
+            
+            real_present = 0.0
+            paid_days = 0.0
+            
+            # Check safely for hourly based status
+            is_worker_type = getattr(emp.salary_structure, 'is_hourly_based', False)
+            
+            import datetime
+            
+            for day in range(1, total_days_in_month + 1):
+                current_date = datetime.date(year, month, day)
+                is_weekend = current_date.weekday() >= 5 # 5=Sat, 6=Sun
+                
+                log = logs_by_date.get(current_date)
+                
+                if log:
+                    # Present/Half-day/Leave
+                    status = log.status.lower() if log.status else ""
+                    if status == 'present':
+                        real_present += 1.0
+                        paid_days += 1.0
+                    elif status == 'half_day':
+                        real_present += 0.5
+                        paid_days += 0.5
+                    elif status in ['leave_paid', 'holiday', 'weekend']: 
+                        # Explicit paid statuses if logged
+                        paid_days += 1.0 
+                    # If absent/unpaid_leave, add 0
+                else:
+                    # No log
+                    if not is_worker_type and is_weekend:
+                        paid_days += 1.0
+                    # Else (Worker or Staff Weekday): 0 (Absent/Unpaid)
+            
+            total_ot_hours = sum(float(log.ot_hours or 0) for log in logs)
+            total_ot_weekend = sum(float(log.ot_weekend_hours or 0) for log in logs)
+            total_ot_holiday = sum(float(log.ot_holiday_hours or 0) for log in logs)
+            
+            attendance_summary = {
+                "total_days_in_month": total_days_in_month,
+                "present_days": real_present,
+                "ot_hours": total_ot_hours,
+                "ot_weekend_hours": total_ot_weekend,
+                "ot_holiday_hours": total_ot_holiday,
+                "paid_days": paid_days, 
+                "loan_deduction": 0 # TODO: Fetch from loan table if exists
+            }
+            
+            # 4. Calculate Salary
+            # Convert SQLAlchemy model to dict for service
+            structure_dict = {c.name: getattr(emp.salary_structure, c.name) for c in emp.salary_structure.__table__.columns}
+            
+            result = payroll_service.calculate_net_salary(
+                structure_dict, 
+                attendance_summary, 
+                employee_type=emp.employee_type or "full_time"
+            )
+            
+            if "error" in result:
+                errors.append(f"Error for {emp.emp_code}: {result['error']}")
+                continue
+                
+            payroll_data = result["payroll"]
+            
+            # 5. Save/Update Payroll Record
+            # Check if exists
+            existing_payroll = db.query(Payroll).filter(
+                Payroll.employee_id == emp.id,
+                Payroll.month == month,
+                Payroll.year == year
+            ).first()
+            
+            if existing_payroll:
+                if existing_payroll.status == 'locked':
+                    errors.append(f"Skipped {emp.emp_code}: Payroll already locked for this month")
+                    continue
+                payroll_record = existing_payroll
+            else:
+                payroll_record = Payroll(
+                    id=str(uuid.uuid4()),
+                    employee_id=emp.id,
+                    month=month,
+                    year=year
+                )
+            
+            # Update fields
+            payroll_record.total_days = total_days_in_month
+            payroll_record.working_days = total_days_in_month # Assuming standard? Or strict working days?
+            payroll_record.present_days = real_present
+            payroll_record.ot_hours = total_ot_hours + total_ot_weekend + total_ot_holiday
+            
+            payroll_record.basic_earned = payroll_data["earnings"]["basic_earned"] # Use explicit key
+            # Mapping result back to model columns
+            # Note: payroll_service returns generic structure, model has specific columns
+            # We map best effort or update service to match model strictly?
+            # Service returns: basic, hra, conveyance, washing, education, other
+            earnings = payroll_data["earnings"]
+            deductions = payroll_data["deductions"]
+            
+            payroll_record.basic_earned = earnings.get("basic_earned", 0)
+            payroll_record.hra_earned = earnings.get("hra", 0)
+            payroll_record.conveyance_earned = earnings.get("conveyance", 0)
+            payroll_record.washing_allowance = earnings.get("washing", 0)
+            
+            # Group other allowances into the single column 'other_allowances'
+            # Include: Medical, Special, Education, Other, Bonus, Incentive
+            other_total = (
+                earnings.get("medical", 0) +
+                earnings.get("special", 0) +
+                earnings.get("education", 0) +
+                earnings.get("other", 0) +
+                earnings.get("bonus", 0) +
+                earnings.get("incentive", 0)
+            )
+            payroll_record.other_allowances = other_total
+            
+            payroll_record.gross_salary = earnings.get("gross_salary", 0)
+            
+            payroll_record.pf_amount = deductions.get("pf", 0)
+            payroll_record.esi_amount = deductions.get("esi", 0)
+            payroll_record.pt_amount = deductions.get("pt", 0)
+            payroll_record.welfare_fund = deductions.get("welfare", 0)
+            payroll_record.loan_deduction = deductions.get("loan", 0)
+            payroll_record.total_deductions = deductions.get("total_deduction", 0)
+            
+            payroll_record.net_salary = payroll_data["net_salary"]
+            payroll_record.status = "draft"
+            
+            db.add(payroll_record)
+            generated_count += 1
+            
+        except Exception as e:
+            errors.append(f"Failed {emp.emp_code}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
+    db.commit()
     
     return {
-        "total_employees": total_employees,
-        "present_today": present_count,
-        "absent_today": absent_count,
-        "late_count": 0, # Placeholder for future logic
-        "recent_activity": recent_activity,
-        "department_breakdown": department_breakdown,
-        "employee_type_breakdown": employee_type_breakdown
+        "status": "success",
+        "message": f"Generated payroll for {generated_count} employees",
+        "errors": errors
     }
+
+@router.post("/payroll/generate/{emp_id}")
+def generate_single_payroll(
+    emp_id: str,
+    month: int = Body(..., ge=1, le=12),
+    year: int = Body(..., ge=2000, le=2100),
+    db: Session = Depends(get_db)
+):
+    """Generate payroll for a single employee"""
+    from sqlalchemy import extract
+    import calendar
+    import datetime
+    
+    emp = db.query(Employee).filter(Employee.id == emp_id).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+        
+    if not emp.salary_structure:
+        raise HTTPException(status_code=400, detail="Employee salary structure not configured")
+        
+    total_days_in_month = calendar.monthrange(year, month)[1]
+    
+    # 2. Fetch Attendance Logs
+    logs = db.query(AttendanceLog).filter(
+        AttendanceLog.employee_id == emp.id,
+        extract('month', AttendanceLog.date) == month,
+        extract('year', AttendanceLog.date) == year
+    ).all()
+    
+    # 3. Aggregate Attendance
+    logs_by_date = {log.date: log for log in logs}
+    real_present = 0.0
+    paid_days = 0.0
+    is_worker_type = getattr(emp.salary_structure, 'is_hourly_based', False)
+    
+    current_actual_date = datetime.date.today()
+    
+    for day in range(1, total_days_in_month + 1):
+        current_date = datetime.date(year, month, day)
+        
+        # Don't count future days
+        if current_date > current_actual_date:
+            continue
+            
+        is_weekend = current_date.weekday() >= 5
+        log = logs_by_date.get(current_date)
+        
+        if log:
+            status = log.status.lower() if log.status else ""
+            if status == 'present':
+                real_present += 1.0
+                paid_days += 1.0
+            elif status == 'half_day':
+                real_present += 0.5
+                paid_days += 0.5
+            elif status in ['leave_paid', 'holiday', 'weekend']: 
+                paid_days += 1.0 
+        else:
+            if not is_worker_type and is_weekend:
+                paid_days += 1.0
+    
+    total_ot_hours = sum(float(log.ot_hours or 0) for log in logs)
+    total_ot_weekend = sum(float(log.ot_weekend_hours or 0) for log in logs)
+    total_ot_holiday = sum(float(log.ot_holiday_hours or 0) for log in logs)
+    
+    attendance_summary = {
+        "total_days_in_month": total_days_in_month,
+        "present_days": real_present,
+        "ot_hours": total_ot_hours,
+        "ot_weekend_hours": total_ot_weekend,
+        "ot_holiday_hours": total_ot_holiday,
+        "paid_days": paid_days,
+        "loan_deduction": 0
+    }
+    
+    # 4. Calculate Salary
+    structure_dict = {c.name: getattr(emp.salary_structure, c.name) for c in emp.salary_structure.__table__.columns}
+    
+    result = payroll_service.calculate_net_salary(
+        structure_dict, 
+        attendance_summary, 
+        employee_type=emp.employee_type or "full_time"
+    )
+    
+    if "error" in result:
+        raise HTTPException(status_code=500, detail=result['error'])
+        
+    payroll_data = result["payroll"]
+    
+    # 5. Save/Update Payroll Record
+    existing_payroll = db.query(Payroll).filter(
+        Payroll.employee_id == emp.id,
+        Payroll.month == month,
+        Payroll.year == year
+    ).first()
+    
+    if existing_payroll:
+        if existing_payroll.status == 'locked':
+             raise HTTPException(status_code=400, detail="Payroll already locked for this month")
+        payroll_record = existing_payroll
+    else:
+        payroll_record = Payroll(
+            id=str(uuid.uuid4()),
+            employee_id=emp.id,
+            month=month,
+            year=year
+        )
+    
+    payroll_record.total_days = total_days_in_month
+    payroll_record.working_days = total_days_in_month
+    payroll_record.present_days = real_present
+    payroll_record.ot_hours = total_ot_hours + total_ot_weekend + total_ot_holiday
+    
+    earnings = payroll_data["earnings"]
+    deductions = payroll_data["deductions"]
+    
+    payroll_record.basic_earned = earnings.get("basic_earned", 0)
+    payroll_record.hra_earned = earnings.get("hra", 0)
+    payroll_record.conveyance_earned = earnings.get("conveyance", 0)
+    payroll_record.washing_allowance = earnings.get("washing", 0)
+    
+    other_total = (
+        earnings.get("medical", 0) +
+        earnings.get("special", 0) +
+        earnings.get("education", 0) +
+        earnings.get("other", 0) +
+        earnings.get("bonus", 0) +
+        earnings.get("incentive", 0)
+    )
+    payroll_record.other_allowances = other_total
+    
+    payroll_record.gross_salary = earnings.get("gross_salary", 0)
+    
+    payroll_record.pf_amount = deductions.get("pf", 0)
+    payroll_record.esi_amount = deductions.get("esi", 0)
+    payroll_record.pt_amount = deductions.get("pt", 0)
+    payroll_record.welfare_fund = deductions.get("welfare", 0)
+    payroll_record.loan_deduction = deductions.get("loan", 0)
+    payroll_record.total_deductions = deductions.get("total_deduction", 0)
+    
+    payroll_record.net_salary = payroll_data["net_salary"]
+    payroll_record.status = "draft"
+    
+    if not existing_payroll:
+        db.add(payroll_record)
+    
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+        
+    return {"status": "success", "message": "Payroll generated successfully", "net_salary": payroll_record.net_salary}
+
+@router.get("/payroll/list")
+def get_payrolls(
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    employee_id: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    query = db.query(Payroll).join(Employee)
+    
+    if month:
+        query = query.filter(Payroll.month == month)
+    if year:
+        query = query.filter(Payroll.year == year)
+    if employee_id:
+        query = query.filter(Payroll.employee_id == employee_id)
+        
+    payrolls = query.all()
+    
+    return [{
+        "id": p.id,
+        "employee_id": p.employee_id,
+        "emp_code": p.employee.emp_code,
+        "employee_name": p.employee.first_name + " " + (p.employee.last_name or ""),
+        "department": getattr(p.employee, 'department', ''),
+        "employee_type": getattr(p.employee, 'employee_type', 'full_time'),
+        "month": p.month,
+        "year": p.year,
+        "working_days": float(p.working_days),
+        "present_days": float(p.present_days),
+        "ot_hours": float(p.ot_hours),
+        
+        # Earnings
+        "basic_earned": float(p.basic_earned),
+        "hra_earned": float(p.hra_earned) if p.hra_earned else 0,
+        "conveyance_earned": float(p.conveyance_earned) if p.conveyance_earned else 0,
+        "washing_allowance": float(p.washing_allowance) if p.washing_allowance else 0,
+        "other_allowances": float(p.other_allowances) if p.other_allowances else 0,
+        "gross_salary": float(p.gross_salary),
+        
+        # Derived for display if needed
+        "ot_amount": float(p.gross_salary) - (float(p.basic_earned) + float(p.hra_earned or 0) + float(p.conveyance_earned or 0) + float(p.washing_allowance or 0) + float(p.other_allowances or 0)), # Approx if OT not stored explicitly as amount
+                
+        # Deductions
+        "pf_amount": float(p.pf_amount) if p.pf_amount else 0,
+        "esi_amount": float(p.esi_amount) if p.esi_amount else 0,
+        "pt_amount": float(p.pt_amount) if p.pt_amount else 0,
+        "welfare_fund": float(p.welfare_fund) if p.welfare_fund else 0,
+        "loan_deduction": float(p.loan_deduction) if p.loan_deduction else 0,
+        "total_deductions": float(p.total_deductions),
+        
+        "net_salary": float(p.net_salary),
+        "status": p.status
+    } for p in payrolls]
 
 @router.get("/payroll/employee/{emp_id}")
 def get_employee_payroll(
     emp_id: str,
+    month: Optional[int] = None,
+    year: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
     emp = db.query(Employee).filter(Employee.id == emp_id).first()
@@ -898,42 +1294,81 @@ def get_employee_payroll(
             "ot_holiday_multiplier": float(sal.ot_holiday_multiplier) if hasattr(sal, 'ot_holiday_multiplier') and sal.ot_holiday_multiplier else 2.5
         }
     
-    # Calculate Attendance for Current Month
-    today = datetime.date.today()
-    start_date = today.replace(day=1)
+    # Calculate Attendance for Target Month
+    import datetime
+    current_actual_date = datetime.date.today()
     
-    # Count present days
-    present_days = db.query(AttendanceLog).filter(
+    if month and year:
+        # Create date object for the 1st of the requested month
+        target_date = datetime.date(year, month, 1)
+    else:
+        target_date = current_actual_date
+
+    # start_date = target_date.replace(day=1) # Not used?
+    
+    import calendar
+    from sqlalchemy import extract
+    total_days_in_month = calendar.monthrange(target_date.year, target_date.month)[1]
+    
+    # Fetch all logs for the month
+    month_logs = db.query(AttendanceLog).filter(
         AttendanceLog.employee_id == emp_id,
-        AttendanceLog.date >= start_date,
-        AttendanceLog.status == "present"
-    ).count()
+        extract('month', AttendanceLog.date) == target_date.month,
+        extract('year', AttendanceLog.date) == target_date.year
+    ).all()
     
-    # Aggregate OT hours from attendance logs
-    from sqlalchemy import func
-    ot_aggregates = db.query(
-        func.sum(AttendanceLog.ot_hours).label('total_ot_hours'),
-        func.sum(AttendanceLog.ot_weekend_hours).label('total_ot_weekend_hours'),
-        func.sum(AttendanceLog.ot_holiday_hours).label('total_ot_holiday_hours'),
-        func.sum(AttendanceLog.total_hours_worked).label('total_hours_worked')
-    ).filter(
-        AttendanceLog.employee_id == emp_id,
-        AttendanceLog.date >= start_date
-    ).first()
+    # Aggregate Attendance Logic
+    logs_by_date = {log.date: log for log in month_logs}
     
-    ot_hours = float(ot_aggregates.total_ot_hours or 0)
-    ot_weekend_hours = float(ot_aggregates.total_ot_weekend_hours or 0)
-    ot_holiday_hours = float(ot_aggregates.total_ot_holiday_hours or 0)
-    total_hours_worked = float(ot_aggregates.total_hours_worked or 0)
+    real_present = 0.0
+    paid_days = 0.0
     
-    # Attendance summary
+    # Check safely for hourly based status
+    is_worker_type = False
+    if sal and hasattr(sal, 'is_hourly_based'):
+        is_worker_type = sal.is_hourly_based
+    
+    for day in range(1, total_days_in_month + 1):
+        loop_date = datetime.date(target_date.year, target_date.month, day)
+        
+        # Don't count days strictly in the ACTUAL future for attendance presence
+        # e.g. if today is Feb 17, don't auto-mark Feb 18 as absent/present unless log exists (unlikely)
+        if loop_date > current_actual_date:
+            continue
+            
+        is_weekend = loop_date.weekday() >= 5 # 5=Sat, 6=Sun
+        
+        log = logs_by_date.get(loop_date)
+        
+        if log:
+            # Present/Half-day/Leave
+            status = log.status.lower() if log.status else ""
+            if status == 'present':
+                real_present += 1.0
+                paid_days += 1.0
+            elif status == 'half_day':
+                real_present += 0.5
+                paid_days += 0.5
+            elif status in ['leave_paid', 'holiday', 'weekend']: 
+                paid_days += 1.0 
+        else:
+            # No log
+            if not is_worker_type and is_weekend:
+                paid_days += 1.0
+            # Else (Worker or Staff Weekday): 0 (Absent/Unpaid)
+    
+    # OT Aggregation from logs
+    ot_hours = sum(float(log.ot_hours or 0) for log in month_logs)
+    ot_weekend_hours = sum(float(log.ot_weekend_hours or 0) for log in month_logs)
+    ot_holiday_hours = sum(float(log.ot_holiday_hours or 0) for log in month_logs)
+    
     attendance = {
-        "total_working_days": 30,
-        "present_days": present_days,
+        "total_days_in_month": total_days_in_month,
+        "present_days": real_present,
+        "paid_days": paid_days,
         "ot_hours": ot_hours,
         "ot_weekend_hours": ot_weekend_hours,
-        "ot_holiday_hours": ot_holiday_hours,
-        "total_hours_worked": total_hours_worked
+        "ot_holiday_hours": ot_holiday_hours
     }
     
     # Calculate payroll with employee type
@@ -943,8 +1378,16 @@ def get_employee_payroll(
         "employee_id": emp.id,
         "employee_name": f"{emp.first_name} {emp.last_name or ''}",
         "employee_type": employee_type,
-        "month": today.strftime("%B %Y"),
-        "present_days": present_days,
+        "month": target_date.strftime("%B %Y"),
+        "present_days": real_present,
+        "rates": {
+            "hourly_rate": salary_struct.get("hourly_rate"),
+            "contract_rate_per_day": salary_struct.get("contract_rate_per_day"),
+            "base_hourly_rate": 0,
+            "ot_rate_multiplier": salary_struct.get("ot_rate_multiplier"),
+            "ot_weekend_multiplier": salary_struct.get("ot_weekend_multiplier"),
+            "ot_holiday_multiplier": salary_struct.get("ot_holiday_multiplier")
+        },
         **result
     }
 
@@ -1278,67 +1721,213 @@ def update_employee_salary(
             }
         )
 
+@router.get("/payroll/summary")
+def get_payroll_summary(
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    """Get aggregated payroll statistics for a specific month/year"""
+    from sqlalchemy import func
+    
+    if not month:
+        month = datetime.date.today().month
+    if not year:
+        year = datetime.date.today().year
+        
+    # Query Payroll table
+    query = db.query(Payroll).filter(
+        Payroll.month == month,
+        Payroll.year == year
+    )
+    
+    payrolls = query.all()
+    
+    total_employees = len(payrolls)
+    total_gross = sum(p.gross_salary for p in payrolls)
+    total_net = sum(p.net_salary for p in payrolls)
+    total_pf = sum(p.pf_amount for p in payrolls)
+    total_esi = sum(p.esi_amount for p in payrolls)
+    total_welfare = sum(p.welfare_fund for p in payrolls)
+    
+    # Breakdown by Status
+    status_counts = {}
+    for p in payrolls:
+        status_counts[p.status] = status_counts.get(p.status, 0) + 1
+        
+    return {
+        "month": month,
+        "year": year,
+        "total_employees": total_employees,
+        "total_gross_salary": float(total_gross),
+        "total_net_salary": float(total_net),
+        "total_pf_deduction": float(total_pf),
+        "total_esi_deduction": float(total_esi),
+        "total_welfare_deduction": float(total_welfare),
+        "status_breakdown": status_counts
+    }
+
 @router.get("/payroll/payslip/{emp_id}/pdf")
-def download_payslip_pdf(emp_id: str, db: Session = Depends(get_db)):
+def download_payslip_pdf(
+    emp_id: str, 
+    month: Optional[int] = None, 
+    year: Optional[int] = None, 
+    db: Session = Depends(get_db)
+):
     emp = db.query(Employee).filter(Employee.id == emp_id).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
         
-    # Get Payroll Data logic (reused from get_employee_payroll, ideally refactor)
-    sal = db.query(SalaryStructure).filter(SalaryStructure.employee_id == emp_id).first()
+    # Determine period
+    if not month or not year:
+        today = datetime.date.today()
+        month = today.month
+        year = today.year
+    else:
+        today = datetime.date(year, month, 1) # Placeholder for display
+        # If looking at past month, use last day of that month for display date?
+        import calendar
+        last_day = calendar.monthrange(year, month)[1]
+        today = datetime.date(year, month, last_day)
+
+    # 1. Try to fetch existing Payroll Record
+    payroll_record = db.query(Payroll).filter(
+        Payroll.employee_id == emp_id,
+        Payroll.month == month,
+        Payroll.year == year
+    ).first()
     
-    # Defaults
-    basic = float(sal.basic_salary) if sal else 15000
-    hra = float(sal.hra_allowance) if sal else 0
-    special = float(sal.special_allowance) if sal else 0
-    pf = float(sal.pf_deduction) if sal else 0
-    pt = float(sal.professional_tax) if sal else 0
+    payroll_data = {}
     
-    today = datetime.date.today()
-    start_date = today.replace(day=1)
-    
-    # Fetch logs for aggregation
-    logs = db.query(AttendanceLog).filter(
-        AttendanceLog.employee_id == emp_id,
-        AttendanceLog.date >= start_date,
-        AttendanceLog.status == "present"
-    ).all()
-    
-    present_days = len(logs)
-    
-    # Aggregate OT
-    ot_hours = sum(float(log.ot_hours or 0) for log in logs)
-    ot_weekend_hours = sum(float(log.ot_weekend_hours or 0) for log in logs)
-    ot_holiday_hours = sum(float(log.ot_holiday_hours or 0) for log in logs)
-    total_hours_worked = sum(float(log.total_hours_worked or 0) for log in logs)
-    
-    attendance = {
-        "total_working_days": 30,
-        "present_days": present_days,
-        "unpaid_leaves": max(0, 30 - present_days),
-        "ot_hours": ot_hours,
-        "ot_weekend_hours": ot_weekend_hours,
-        "ot_holiday_hours": ot_holiday_hours,
-        "total_hours_worked": total_hours_worked
-    }
-    
-    salary_struct = {
-        "basic_salary": basic, "hra": hra, "special_allowance": special, 
-        "pf_employee": pf, "professional_tax": pt,
-        # Pass other fields needed for calculation
-        "conveyance_allowance": float(sal.conveyance_allowance) if sal else 0,
-        "medical_allowance": float(sal.medical_allowance) if sal else 0,
-        "education_allowance": float(sal.education_allowance) if sal else 0,
-        "other_allowance": float(sal.other_allowance) if sal else 0,
-        "is_hourly_based": sal.is_hourly_based if sal else False,
-        "hourly_rate": float(sal.hourly_rate) if sal else 0,
-        "contract_rate_per_day": float(sal.contract_rate_per_day) if sal else 0,
-        "ot_rate_multiplier": float(sal.ot_rate_multiplier) if sal else 1.5,
-        "ot_weekend_multiplier": float(sal.ot_weekend_multiplier) if sal else 2.0
-    }
-    
-    net_data = payroll_service.calculate_net_salary(salary_struct, attendance, getattr(emp, 'employee_type', 'full_time'))
-    
+    if payroll_record:
+        # Use stored data
+        payroll_data = {
+            "earnings": {
+                "Basic Salary": float(payroll_record.basic_earned),
+                "HRA": float(payroll_record.hra_earned or 0),
+                "Conveyance": float(payroll_record.conveyance_earned or 0),
+                "Washing Allowance": float(payroll_record.washing_allowance or 0),
+                "Other Allowances": float(payroll_record.other_allowances or 0), # Grouped in DB
+                "Overtime": float(payroll_record.gross_salary) - (float(payroll_record.basic_earned) + float(payroll_record.hra_earned or 0) + float(payroll_record.conveyance_earned or 0) + float(payroll_record.washing_allowance or 0) + float(payroll_record.other_allowances or 0)), # Derive OT roughly or store it?
+                # improved derivation: Gross - (Sum of known earnings)
+            },
+            "deductions": {
+                "Provident Fund": float(payroll_record.pf_amount or 0),
+                "ESI": float(payroll_record.esi_amount or 0),
+                "Professional Tax": float(payroll_record.pt_amount or 0),
+                "Welfare Fund": float(payroll_record.welfare_fund or 0),
+                "Loan Deduction": float(payroll_record.loan_deduction or 0),
+            },
+            "gross": float(payroll_record.gross_salary),
+            "total_deductions": float(payroll_record.total_deductions),
+            "net": float(payroll_record.net_salary),
+            "present_days": float(payroll_record.present_days),
+            "total_days": float(payroll_record.working_days),
+            "ot_hours": float(payroll_record.ot_hours)
+        }
+        
+        # Refine Earnings Key Names
+        # To match the "Other Allowances" grouping in DB, we might want to split if needed, 
+        # but DB only stores the aggregate. So display as "Other Allowances".
+        pass
+        
+    else:
+        # 2. Calculate On-the-Fly (Draft)
+        sal = db.query(SalaryStructure).filter(SalaryStructure.employee_id == emp_id).first()
+        if not sal:
+             # Basic Fallback
+             payroll_data = { "earnings": {"Basic": 0}, "deductions": {}, "gross": 0, "net": 0, "present_days": 0, "total_days": 30, "ot_hours": 0 }
+        else:
+            # Construct Salary Struct
+            salary_struct = {c.name: getattr(sal, c.name) for c in sal.__table__.columns}
+            
+            # Calculate Attendance (Reusing Logic)
+            import calendar
+            total_days_in_month = calendar.monthrange(year, month)[1]
+            month_logs = db.query(AttendanceLog).filter(
+                AttendanceLog.employee_id == emp_id,
+                extract('month', AttendanceLog.date) == month,
+                extract('year', AttendanceLog.date) == year
+            ).all()
+            
+            logs_by_date = {log.date: log for log in month_logs}
+            real_present = 0.0
+            paid_days = 0.0
+            is_worker_type = getattr(sal, 'is_hourly_based', False)
+            
+            for day in range(1, total_days_in_month + 1):
+                d_date = datetime.date(year, month, day)
+                # Count everything up to end of month (even if future, assume absent/unpaid? Or projected?)
+                # For "Draft", usually calculate based on passed days or assume perfect?
+                # Let's count *up to today*.
+                if d_date > datetime.date.today():
+                    continue 
+
+                is_weekend = d_date.weekday() >= 5
+                log = logs_by_date.get(d_date)
+                
+                if log:
+                    st = log.status.lower() if log.status else ""
+                    if st == 'present':
+                        real_present += 1.0
+                        paid_days += 1.0
+                    elif st == 'half_day':
+                        real_present += 0.5
+                        paid_days += 0.5
+                    elif st in ['leave_paid', 'holiday', 'weekend']:
+                         paid_days += 1.0
+                else:
+                    if not is_worker_type and is_weekend:
+                        paid_days += 1.0
+            
+            ot_hours = sum(float(log.ot_hours or 0) for log in month_logs)
+            ot_weekend = sum(float(log.ot_weekend_hours or 0) for log in month_logs)
+            ot_holiday = sum(float(log.ot_holiday_hours or 0) for log in month_logs)
+            
+            attendance_summary = {
+                "total_days_in_month": total_days_in_month,
+                "present_days": real_present,
+                "paid_days": paid_days,
+                "ot_hours": ot_hours,
+                "ot_weekend_hours": ot_weekend, 
+                "ot_holiday_hours": ot_holiday
+            }
+            
+            calc_result = payroll_service.calculate_net_salary(salary_struct, attendance_summary, getattr(emp, 'employee_type', 'full_time'))
+            
+            p_earn = calc_result["payroll"]["earnings"]
+            p_ded = calc_result["payroll"]["deductions"]
+            
+            payroll_data = {
+                "earnings": {
+                    "Basic Salary": p_earn.get("basic_earned", 0),
+                    "HRA": p_earn.get("hra", 0),
+                    "Conveyance": p_earn.get("conveyance", 0),
+                    "Washing Allowance": p_earn.get("washing", 0),
+                    "Medical Allowance": p_earn.get("medical", 0),
+                    "Special Allowance": p_earn.get("special", 0),
+                    "Education Allowance": p_earn.get("education", 0),
+                    "Other Allowances": p_earn.get("other", 0),
+                    "Bonus": p_earn.get("bonus", 0),
+                    "Incentive": p_earn.get("incentive", 0),
+                    "Overtime": p_earn.get("ot_amount", 0)
+                },
+                "deductions": {
+                    "Provident Fund": p_ded.get("pf", 0),
+                    "ESI": p_ded.get("esi", 0),
+                    "Professional Tax": p_ded.get("pt", 0),
+                    "Welfare Fund": p_ded.get("welfare", 0),
+                    "Loan Deduction": p_ded.get("loan", 0),
+                    "TDS": p_ded.get("tds", 0)
+                },
+                "gross": p_earn.get("gross_salary", 0),
+                "total_deductions": p_ded.get("total_deduction", 0),
+                "net": calc_result["payroll"]["net_salary"],
+                "present_days": real_present,
+                "total_days": total_days_in_month,
+                "ot_hours": ot_hours + ot_weekend + ot_holiday
+            }
+
     # --- Generate PDF ---
     filename = f"Payslip_{emp.first_name}_{today.strftime('%b_%Y')}.pdf"
     filepath = f"temp_{filename}"
@@ -1346,97 +1935,89 @@ def download_payslip_pdf(emp_id: str, db: Session = Depends(get_db)):
     c = canvas.Canvas(filepath, pagesize=A4)
     width, height = A4
     
-    # Header
-    c.setFont("Helvetica-Bold", 20)
-    c.drawString(50, height - 50, f"PAYSLIP - {today.strftime('%B %Y')}")
-    
+    # 1. Header
+    c.setFont("Helvetica-Bold", 18)
+    c.drawString(50, height - 50, "PAYSLIP")
     c.setFont("Helvetica", 12)
-    c.drawString(50, height - 80, f"Employee: {emp.first_name} {emp.last_name or ''}")
-    c.drawString(50, height - 100, f"Employee ID: {emp.emp_code}")
-    c.drawString(50, height - 120, f"Designation: {getattr(emp, 'designation', 'N/A')}")
+    c.drawString(50, height - 70, f"Period: {today.strftime('%B %Y')}")
     
-    # Attendance
-    c.drawString(50, height - 150, f"Present Days: {present_days}")
-    c.drawString(200, height - 150, f"Total Days: 30")
-    if total_hours_worked > 0:
-        c.drawString(350, height - 150, f"Total Hours: {total_hours_worked}")
-    
-    # Table Header
-    y = height - 190
-    c.setLineWidth(1)
-    c.line(50, y, width - 50, y)
-    y -= 20
+    # 2. Employee Details Box
+    c.rect(48, height - 160, width - 96, 80)
     c.setFont("Helvetica-Bold", 12)
-    c.drawString(50, y, "Earnings")
-    c.drawString(300, y, "Amount")
-    c.drawString(350, y, "Deductions")
-    c.drawString(500, y, "Amount")
-    y -= 10
-    c.line(50, y, width - 50, y)
-    y -= 20
+    c.drawString(60, height - 100, f"Name: {emp.first_name} {emp.last_name or ''}")
+    c.drawString(300, height - 100, f"Designation: {getattr(emp, 'designation', 'N/A')}")
     
-    # Earnings
     c.setFont("Helvetica", 11)
-    earnings = net_data["payroll"]["earnings"]
-    deductions = net_data["payroll"]["deductions"]
+    c.drawString(60, height - 120, f"ID: {emp.emp_code}")
+    c.drawString(300, height - 120, f"Department: {getattr(emp, 'department', 'N/A')}")
     
+    c.drawString(60, height - 140, f"Date of Join: {getattr(emp, 'joining_date', 'N/A')}")
+    c.drawString(300, height - 140, f"Days Worked: {payroll_data['present_days']}")
+    
+    # 3. Table Header
+    y = height - 190
+    c.setFillColor(colors.lightgrey)
+    c.rect(48, y - 20, width - 96, 25, fill=1)
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(60, y - 13, "EARNINGS")
+    c.drawString(240, y - 13, "AMOUNT")
+    c.drawString(310, y - 13, "DEDUCTIONS")
+    c.drawString(490, y - 13, "AMOUNT")
+    
+    y -= 35
     start_y = y
     
-    # Basic
-    c.drawString(50, y, "Basic Salary")
-    c.drawString(300, y, f"{earnings['basic']:.2f}")
+    # 4. List Items
+    # We list side-by-side. 
+    earn_items = [(k, v) for k, v in payroll_data["earnings"].items() if v > 0]
+    ded_items = [(k, v) for k, v in payroll_data["deductions"].items() if v > 0]
     
-    # PF
-    c.drawString(350, y, "Provident Fund")
-    c.drawString(500, y, f"{deductions['pf']:.2f}")
-    y -= 20
+    max_items = max(len(earn_items), len(ded_items))
     
-    # HRA
-    c.drawString(50, y, "HRA")
-    c.drawString(300, y, f"{earnings['hra']:.2f}")
+    c.setFont("Helvetica", 10)
     
-    # PT
-    c.drawString(350, y, "Professional Tax")
-    c.drawString(500, y, f"{deductions['prof_tax']:.2f}")
-    y -= 20
+    for i in range(max_items):
+        # Earnings Left
+        if i < len(earn_items):
+            label, amount = earn_items[i]
+            c.drawString(60, y, label)
+            c.drawRightString(290, y, f"{amount:.2f}")
+            
+        # Deductions Right
+        if i < len(ded_items):
+            label, amount = ded_items[i]
+            c.drawString(310, y, label)
+            c.drawRightString(540, y, f"{amount:.2f}")
+            
+        y -= 15
     
-    # Allowances (grouped or specific)
-    c.drawString(50, y, "Special Allowance")
-    c.drawString(300, y, f"{earnings['special']:.2f}")
-    
-    # LOP
-    c.drawString(350, y, "LOP")
-    c.drawString(500, y, f"{deductions['lop']:.2f}")
-    y -= 20
-    
-    # Overtime
-    if earnings['overtime_total'] > 0:
-        c.drawString(50, y, f"Overtime ({attendance['ot_hours']}h Reg, {attendance['ot_weekend_hours']}h Wknd)")
-        c.drawString(300, y, f"{earnings['overtime_total']:.2f}")
-        y -= 20
-
-    # Hourly / Contract specific
-    if salary_struct['is_hourly_based']:
-        c.drawString(50, y, f"Hourly Pay ({attendance['total_hours_worked']} hrs)")
-        c.drawString(300, y, f"Included") # Usually part of gross, but here structure varies
-        y -= 20
-    
-    # Totals
+    # Bottom Lines
     y -= 10
-    c.line(50, y, width - 50, y)
-    y -= 20
+    c.line(48, y, width - 48, y)
+    y -= 25
+    
+    # 5. Totals
     c.setFont("Helvetica-Bold", 11)
-    c.drawString(50, y, "Gross Earnings")
-    c.drawString(300, y, f"{earnings['gross_earned']:.2f}")
+    c.drawString(60, y, "Total Earnings")
+    c.drawRightString(290, y, f"{payroll_data['gross']:.2f}")
     
-    c.drawString(350, y, "Total Deductions")
-    c.drawString(500, y, f"{deductions['total']:.2f}")
+    c.drawString(310, y, "Total Deductions")
+    c.drawRightString(540, y, f"{payroll_data['total_deductions']:.2f}")
     
-    # Net Pay
+    # Net Pay Box
     y -= 40
-    c.setFillColor(colors.blue)
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(50, y, f"NET PAYABLE: Rs. {net_data['payroll']['net_salary']:.2f}")
+    c.setFillColor(colors.aliceblue)
+    c.rect(48, y - 10, width - 96, 30, fill=1, stroke=1)
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(60, y + 2, "NET SALARY PAYABLE")
+    c.setFont("Helvetica-Bold", 14)
+    c.drawRightString(540, y, f"Rs. {payroll_data['net']:.2f}")
+    
+    # Footer
+    c.setFont("Helvetica-Oblique", 8)
+    c.drawCentredString(width / 2, 50, "This is a system generated payslip.")
     
     c.save()
     
@@ -1450,57 +2031,68 @@ def get_departments(
     db: Session = Depends(get_db)
 ):
     """Get all departments with optional status filter"""
-    query = db.query(Department)
-    
-    if status:
-        query = query.filter(Department.status == status)
-    
-    departments = query.all()
-    
-    # Get employee count for each department
-    result = []
-    for dept in departments:
+    try:
+        query = db.query(Department)
+        
+        if status:
+            query = query.filter(Department.status == status)
+        
+        departments = query.all()
+        
+        # Get employee count for each department
+        result = []
+        for dept in departments:
+            employee_count = db.query(Employee).filter(
+                Employee.department == dept.name,
+                Employee.status == 'active'
+            ).count()
+            
+            result.append({
+                "id": dept.id,
+                "name": dept.name,
+                "description": dept.description,
+                "department_head": dept.department_head,
+                "status": dept.status,
+                "employee_count": employee_count,
+                "created_at": dept.created_at.isoformat() if dept.created_at else None,
+                "updated_at": dept.updated_at.isoformat() if dept.updated_at else None
+            })
+        
+        return result
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        logger.error(f"Error fetching departments: {e}\n{error_trace}")
+        print(f"Error fetching departments: {e}\n{error_trace}") # Print to stdout for visibility
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/departments/{dept_id}")
+def get_department_by_id(dept_id: str, db: Session = Depends(get_db)):
+    """Get single department details"""
+    try:
+        dept = db.query(Department).filter(Department.id == dept_id).first()
+        if not dept:
+            raise HTTPException(status_code=404, detail="Department not found")
+        
+        # Get employee count
         employee_count = db.query(Employee).filter(
             Employee.department == dept.name,
             Employee.status == 'active'
         ).count()
         
-        result.append({
+        return {
             "id": dept.id,
             "name": dept.name,
             "description": dept.description,
             "department_head": dept.department_head,
             "status": dept.status,
             "employee_count": employee_count,
-            "created_at": dept.created_at.isoformat() if dept.created_at else None,
-            "updated_at": dept.updated_at.isoformat() if dept.updated_at else None
-        })
-    
-    return result
-
-@router.get("/departments/{dept_id}")
-def get_department_by_id(dept_id: str, db: Session = Depends(get_db)):
-    """Get single department details"""
-    dept = db.query(Department).filter(Department.id == dept_id).first()
-    if not dept:
-        raise HTTPException(status_code=404, detail="Department not found")
-    
-    # Get employee count
-    employee_count = db.query(Employee).filter(
-        Employee.department == dept.name,
-        Employee.status == 'active'
-    ).count()
-    
-    return {
-        "id": dept.id,
-        "name": dept.name,
-        "description": dept.description,
-        "department_head": dept.department_head,
-        "status": dept.status,
-        "employee_count": employee_count,
-        "company_id": dept.company_id,
-        "created_at": dept.created_at.isoformat() if dept.created_at else None
-    }
+            "company_id": dept.company_id,
+            "created_at": dept.created_at.isoformat() if dept.created_at else None
+        }
+    except Exception as e:
+        logger.error(f"Error fetching department {dept_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/departments")
 def create_department(
@@ -1508,33 +2100,41 @@ def create_department(
     db: Session = Depends(get_db)
 ):
     """Create a new department"""
-    # Check if department name already exists
-    existing = db.query(Department).filter(
-        Department.name == data.get('name'),
-        Department.company_id == data.get('company_id', 'default')
-    ).first()
-    
-    if existing:
-        raise HTTPException(status_code=400, detail="Department with this name already exists")
-    
-    new_dept = Department(
-        id=str(uuid.uuid4()),
-        company_id=data.get('company_id', 'default'),
-        name=data.get('name'),
-        description=data.get('description'),
-        department_head=data.get('department_head'),
-        status=data.get('status', 'active')
-    )
-    
-    db.add(new_dept)
-    db.commit()
-    db.refresh(new_dept)
-    
-    return {
-        "status": "success",
-        "message": "Department created successfully",
-        "id": new_dept.id
-    }
+    try:
+        # Check if department name already exists
+        existing = db.query(Department).filter(
+            Department.name == data.get('name'),
+            Department.company_id == data.get('company_id', 'default')
+        ).first()
+        
+        if existing:
+            raise HTTPException(status_code=400, detail="Department with this name already exists")
+        
+        new_dept = Department(
+            id=str(uuid.uuid4()),
+            company_id=data.get('company_id', 'default'),
+            name=data.get('name'),
+            description=data.get('description'),
+            department_head=data.get('department_head'),
+            status=data.get('status', 'active')
+        )
+        
+        db.add(new_dept)
+        db.commit()
+        db.refresh(new_dept)
+        
+        return {
+            "status": "success",
+            "message": "Department created successfully",
+            "id": new_dept.id
+        }
+    except Exception as e:
+        db.rollback()
+        import traceback
+        error_trace = traceback.format_exc()
+        logger.error(f"Error creating department: {e}\n{error_trace}")
+        print(f"Error creating department: {e}\n{error_trace}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/departments/{dept_id}")
 def update_department(
@@ -1733,8 +2333,16 @@ def recalculate_hours(
                     log.ot_weekend_hours = round(net_hours, 2)
                     log.ot_hours = 0
                 else:
+                    # Weekday OT Logic
                     if net_hours > standard_work:
-                        log.ot_hours = round(net_hours - standard_work, 2)
+                        raw_ot = net_hours - standard_work
+                        
+                        if raw_ot < 2.0:
+                            log.ot_hours = 0.0
+                        elif raw_ot < 4.0:
+                            log.ot_hours = 2.0
+                        else:
+                            log.ot_hours = 4.0
                     else:
                         log.ot_hours = 0
                 

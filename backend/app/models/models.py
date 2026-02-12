@@ -19,6 +19,11 @@ class AttendanceStatus(str, enum.Enum):
     WEEKLY_OFF = "weekly_off"
     HOLIDAY = "holiday"
 
+class PayrollStatus(str, enum.Enum):
+    DRAFT = "draft"
+    LOCKED = "locked"
+    PAID = "paid"
+
 class Models(Base):
     __abstract__ = True
     # Helper for mixins if needed
@@ -116,6 +121,7 @@ class SalaryStructure(Base):
     special_allowance = Column(Numeric(12, 2), default=0.0)
     education_allowance = Column(Numeric(12, 2), default=0.0)
     other_allowance = Column(Numeric(12, 2), default=0.0)
+    washing_allowance = Column(Numeric(12, 2), default=0.0)
     
     # Deductions
     pf_employee = Column(Numeric(12, 2), default=0.0)  # Employee PF Contribution
@@ -123,6 +129,7 @@ class SalaryStructure(Base):
     esi_employee = Column(Numeric(12, 2), default=0.0)  # Employee ESI
     esi_employer = Column(Numeric(12, 2), default=0.0)  # Employer ESI
     professional_tax = Column(Numeric(12, 2), default=0.0)
+    welfare_deduction = Column(Numeric(12, 2), default=0.0)
     tds = Column(Numeric(12, 2), default=0.0)  # Tax Deducted at Source
     
     # Other Benefits
@@ -148,6 +155,42 @@ class SalaryStructure(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     employee = relationship("Employee", back_populates="salary_structure")
+
+class Payroll(Base):
+    __tablename__ = "payrolls"
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    employee_id = Column(String, ForeignKey("employees.id"))
+    month = Column(Integer, nullable=False) # 1-12
+    year = Column(Integer, nullable=False)
+    
+    # Snapshot of calculations
+    total_days = Column(Numeric(5, 2), default=0.0)
+    working_days = Column(Numeric(5, 2), default=0.0)
+    present_days = Column(Numeric(5, 2), default=0.0)
+    ot_hours = Column(Numeric(5, 2), default=0.0)
+    
+    basic_earned = Column(Numeric(12, 2), default=0.0)
+    hra_earned = Column(Numeric(12, 2), default=0.0)
+    conveyance_earned = Column(Numeric(12, 2), default=0.0)
+    washing_allowance = Column(Numeric(12, 2), default=0.0)
+    other_allowances = Column(Numeric(12, 2), default=0.0)
+    
+    gross_salary = Column(Numeric(12, 2), default=0.0)
+    
+    # Deductions
+    pf_amount = Column(Numeric(12, 2), default=0.0)
+    esi_amount = Column(Numeric(12, 2), default=0.0)
+    pt_amount = Column(Numeric(12, 2), default=0.0)
+    welfare_fund = Column(Numeric(12, 2), default=0.0)
+    loan_deduction = Column(Numeric(12, 2), default=0.0)
+    total_deductions = Column(Numeric(12, 2), default=0.0)
+    
+    net_salary = Column(Numeric(12, 2), default=0.0)
+    
+    status = Column(String, default="draft") # draft, locked, paid
+    generated_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    employee = relationship("Employee")
 
 # Update Employee relationship
 Employee.salary_structure = relationship("SalaryStructure", uselist=False, back_populates="employee")
