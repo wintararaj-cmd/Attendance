@@ -124,7 +124,7 @@ export default function DepartmentManagement() {
                         <div>
                             <p style={{ margin: 0, opacity: 0.9, fontSize: '0.875rem' }}>Active Departments</p>
                             <h2 style={{ margin: '0.5rem 0 0 0', fontSize: '2rem' }}>
-                                {departments.filter(d => d.status === 'active').length}
+                                {(departments || []).filter(d => d?.status === 'active').length}
                             </h2>
                         </div>
                         <Building2 size={48} style={{ opacity: 0.3 }} />
@@ -136,7 +136,7 @@ export default function DepartmentManagement() {
                         <div>
                             <p style={{ margin: 0, opacity: 0.9, fontSize: '0.875rem' }}>Total Employees</p>
                             <h2 style={{ margin: '0.5rem 0 0 0', fontSize: '2rem' }}>
-                                {departments.reduce((sum, d) => sum + d.employee_count, 0)}
+                                {departments.reduce((sum, d) => sum + (d?.employee_count || 0), 0)}
                             </h2>
                         </div>
                         <Users size={48} style={{ opacity: 0.3 }} />

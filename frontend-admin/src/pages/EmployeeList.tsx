@@ -118,8 +118,8 @@ export default function EmployeeList() {
     };
 
     // Get unique departments and types for filters
-    const departments = Array.from(new Set(employees.map(e => e.department).filter(Boolean)));
-    const employeeTypes = Array.from(new Set(employees.map(e => e.employee_type).filter(Boolean)));
+    const departments = Array.from(new Set((employees || []).map(e => e.department).filter(Boolean)));
+    const employeeTypes = Array.from(new Set((employees || []).map(e => e.employee_type).filter(Boolean)));
 
     if (loading) return <div className="p-4">Loading employees...</div>;
 

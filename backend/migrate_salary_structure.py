@@ -57,12 +57,15 @@ def migrate_salary_structure():
             'medical_allowance': 'NUMERIC(12, 2) DEFAULT 0.0',
             'education_allowance': 'NUMERIC(12, 2) DEFAULT 0.0',
             'other_allowance': 'NUMERIC(12, 2) DEFAULT 0.0',
+            'washing_allowance': 'NUMERIC(12, 2) DEFAULT 0.0',
             
             # Update deduction columns
             'pf_employee': 'NUMERIC(12, 2) DEFAULT 0.0',
             'pf_employer': 'NUMERIC(12, 2) DEFAULT 0.0',
             'esi_employee': 'NUMERIC(12, 2) DEFAULT 0.0',
             'esi_employer': 'NUMERIC(12, 2) DEFAULT 0.0',
+            'professional_tax': 'NUMERIC(12, 2) DEFAULT 0.0',
+            'welfare_deduction': 'NUMERIC(12, 2) DEFAULT 0.0',
             'tds': 'NUMERIC(12, 2) DEFAULT 0.0',
             
             # Benefits

@@ -146,13 +146,13 @@ export default function DashboardHome() {
                         <h3 style={{ margin: 0 }}>Department Distribution</h3>
                     </div>
 
-                    {s.department_breakdown.length === 0 ? (
+                    {s.department_breakdown?.length === 0 ? (
                         <div style={{ color: 'var(--text-muted)', padding: '2rem', textAlign: 'center', background: '#f9fafb', borderRadius: '8px' }}>
                             No department data available
                         </div>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                            {s.department_breakdown.map((dept, idx) => {
+                            {(s.department_breakdown || []).map((dept, idx) => {
                                 const percentage = s.total_employees > 0
                                     ? Math.round((dept.count / s.total_employees) * 100)
                                     : 0;
@@ -192,13 +192,13 @@ export default function DashboardHome() {
                         <h3 style={{ margin: 0 }}>Employee Type Distribution</h3>
                     </div>
 
-                    {s.employee_type_breakdown.length === 0 ? (
+                    {s.employee_type_breakdown?.length === 0 ? (
                         <div style={{ color: 'var(--text-muted)', padding: '2rem', textAlign: 'center', background: '#f9fafb', borderRadius: '8px' }}>
                             No employee type data available
                         </div>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                            {s.employee_type_breakdown.map((type, idx) => {
+                            {(s.employee_type_breakdown || []).map((type, idx) => {
                                 const percentage = s.total_employees > 0
                                     ? Math.round((type.count / s.total_employees) * 100)
                                     : 0;

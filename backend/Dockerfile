@@ -47,7 +47,7 @@ RUN echo '#!/bin/bash\n\
     python migrate_payroll_enhancements.py || echo "[WARN] Payroll enhancements migration had warnings..."\n\
     echo ""\n\
     echo "[3.5/4] Seeding demo data..."\n\
-    python seed_data.py || echo "[WARN] Seeding had warnings..."\n\
+    python reset_and_seed.py || echo "[WARN] Seeding had warnings..."\n\
     echo ""\n\
     echo "[4/4] Starting application server..."\n\
     echo "============================================================"\n\

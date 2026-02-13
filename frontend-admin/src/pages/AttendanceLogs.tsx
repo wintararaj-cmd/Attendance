@@ -244,14 +244,14 @@ export default function AttendanceLogs() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {logs.length === 0 ? (
+                                {(!logs || logs.length === 0) ? (
                                     <tr>
                                         <td colSpan={8} style={{ textAlign: 'center', padding: '3rem' }}>
                                             <div style={{ color: 'var(--text-muted)' }}>No attendance logs found matching filters</div>
                                         </td>
                                     </tr>
                                 ) : (
-                                    logs.map(log => (
+                                    (logs || []).map(log => (
                                         <tr key={log.id}>
                                             <td>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
