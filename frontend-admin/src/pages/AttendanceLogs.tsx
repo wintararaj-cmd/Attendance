@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Calendar, Clock, Download, Filter } from 'lucide-react';
+import { Calendar, Clock, Download, Filter, Search, RefreshCw, X, FileText } from 'lucide-react';
 
 interface AttendanceLog {
     id: string;
@@ -17,218 +17,232 @@ interface AttendanceLog {
     total_hours_worked: number;
 }
 
-
+const STATUS_BADGE: Record<string, string> = {
+    present: 'badge-success',
+    absent: 'badge-danger',
+    late: 'badge-warning',
+    half_day: 'badge-warning',
+};
 
 export default function AttendanceLogs() {
     const [logs, setLogs] = useState<AttendanceLog[]>([]);
-    // Filters
     const [searchTerm, setSearchTerm] = useState('');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
-
     const [loading, setLoading] = useState(true);
     const [exporting, setExporting] = useState(false);
+    const [syncing, setSyncing] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-    useEffect(() => {
-        fetchLogs();
-    }, []);
+    useEffect(() => { fetchLogs(); }, []);
+
+    const showSuccess = (msg: string) => {
+        setSuccessMsg(msg);
+        setTimeout(() => setSuccessMsg(null), 3000);
+    };
 
     const fetchLogs = async () => {
         try {
             setLoading(true);
             setError(null);
-
-            const params: any = {};
+            const params: Record<string, string> = {};
             if (searchTerm) params.search = searchTerm;
             if (startDate) params.start_date = startDate;
             if (endDate) params.end_date = endDate;
-
             const res = await axios.get('/api/v1/attendance/logs', { params });
-            // Backend returns { logs: [...] }
             setLogs(res.data.logs || []);
         } catch (err: any) {
-            console.error("Failed to fetch logs", err);
-            setError(err.response?.data?.detail || err.message || "Failed to load logs");
+            setError(err.response?.data?.detail || err.message || 'Failed to load logs');
         } finally {
             setLoading(false);
         }
     };
 
+    const handleClearFilters = () => {
+        setSearchTerm('');
+        setStartDate('');
+        setEndDate('');
+        setTimeout(fetchLogs, 0);
+    };
+
     const handleExport = async () => {
         try {
             setExporting(true);
-            const params: any = {};
+            const params: Record<string, string> = {};
             if (searchTerm) params.search = searchTerm;
             if (startDate) params.start_date = startDate;
             if (endDate) params.end_date = endDate;
-
             const response = await axios.get('/api/v1/attendance/export', {
                 params,
-                responseType: 'blob', // Important for file download
+                responseType: 'blob',
             });
-
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `attendance_logs_${new Date().toISOString().split('T')[0]}.csv`);
+            link.setAttribute('download', `attendance_${new Date().toISOString().split('T')[0]}.csv`);
             document.body.appendChild(link);
             link.click();
             link.remove();
+            showSuccess('Export downloaded successfully');
         } catch (err: any) {
-            console.error("Export failed", err);
-            const msg = err.response?.data?.detail || "Failed to export logs";
-            alert(`Export Error: ${msg}`);
+            alert('Export Error: ' + (err.response?.data?.detail || 'Failed to export'));
         } finally {
             setExporting(false);
         }
     };
 
-    const formatTime = (timeStr: string | null) => {
-        // Backend now returns formatted string "HH:MM AM/PM"
-        if (!timeStr) return '--:--';
-        return timeStr;
+    const handleSyncHours = async () => {
+        if (!confirm('Recalculate total hours for the last 30 days? This will apply the 30-min break deduction to all existing logs.')) return;
+        try {
+            setSyncing(true);
+            const res = await axios.post('/api/v1/debug/recalculate-hours', {}, { params: { days: 30 } });
+            showSuccess(res.data.message || 'Hours synced successfully');
+            fetchLogs();
+        } catch (err: any) {
+            alert('Error: ' + (err.response?.data?.detail || err.message));
+        } finally {
+            setSyncing(false);
+        }
     };
 
+    const formatTime = (timeStr: string | null) => timeStr || '—';
     const formatDate = (isoString: string) => {
         if (!isoString) return '';
         return new Date(isoString).toLocaleDateString([], { day: '2-digit', month: 'short', year: 'numeric' });
     };
 
+    const hasFilters = searchTerm || startDate || endDate;
+
     return (
-        <div>
+        <div className="animate-fade-in">
+            {/* Page Header */}
             <div className="page-header">
                 <div>
-                    <h2>Attendance Logs</h2>
-                    <div className="text-muted" style={{ fontSize: '0.875rem' }}>
-                        View and export attendance records
-                    </div>
+                    <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                        <FileText size={22} style={{ color: 'var(--primary)' }} />
+                        Attendance Logs
+                    </h2>
+                    <div className="page-header-subtitle">View, filter and export attendance records</div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.625rem' }}>
+                    <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={handleSyncHours}
+                        disabled={syncing}
+                        style={{ gap: '0.375rem' }}
+                    >
+                        <RefreshCw size={14} style={{ animation: syncing ? 'spin 0.7s linear infinite' : 'none' }} />
+                        {syncing ? 'Syncing…' : 'Sync Hours'}
+                    </button>
+                    <button
+                        className="btn btn-success btn-sm"
+                        onClick={handleExport}
+                        disabled={exporting}
+                    >
+                        <Download size={14} />
+                        {exporting ? 'Exporting…' : 'Export CSV'}
+                    </button>
                 </div>
             </div>
 
-            <div className="card" style={{ marginBottom: '1.5rem' }}>
-                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                    <div style={{ flex: 1, minWidth: '200px' }}>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500, fontSize: '0.875rem' }}>
+            {/* Alerts */}
+            {successMsg && (
+                <div className="alert alert-success" style={{ marginBottom: '1rem' }}>
+                    ✓ {successMsg}
+                </div>
+            )}
+            {error && (
+                <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+                    {error}
+                </div>
+            )}
+
+            {/* Filter Bar */}
+            <div className="card" style={{ marginBottom: '1.25rem', padding: '1.25rem' }}>
+                <div style={{ display: 'flex', gap: '0.875rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                    {/* Search */}
+                    <div style={{ flex: '1 1 220px' }}>
+                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.375rem' }}>
                             Search Employee
                         </label>
-                        <input
-                            type="text"
-                            placeholder="Search by Name or Code..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                    fetchLogs();
-                                }
-                            }}
-                            style={{
-                                width: '100%',
-                                padding: '0.6rem',
-                                borderRadius: '8px',
-                                border: '1px solid #d1d5db',
-                                fontSize: '0.875rem'
-                            }}
-                        />
+                        <div style={{ position: 'relative' }}>
+                            <Search size={15} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-faint)' }} />
+                            <input
+                                type="search"
+                                placeholder="Name or code…"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && fetchLogs()}
+                                style={{ paddingLeft: '2.25rem' }}
+                            />
+                        </div>
                     </div>
 
-                    <div style={{ width: '150px' }}>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500, fontSize: '0.875rem' }}>
-                            Start Date
+                    {/* Start Date */}
+                    <div style={{ flex: '0 0 160px' }}>
+                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.375rem' }}>
+                            From Date
                         </label>
-                        <input
-                            type="date"
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                            style={{
-                                width: '100%',
-                                padding: '0.6rem',
-                                borderRadius: '8px',
-                                border: '1px solid #d1d5db',
-                                fontSize: '0.875rem'
-                            }}
-                        />
+                        <div style={{ position: 'relative' }}>
+                            <Calendar size={15} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-faint)' }} />
+                            <input
+                                type="date"
+                                value={startDate}
+                                onChange={(e) => setStartDate(e.target.value)}
+                                style={{ paddingLeft: '2.25rem' }}
+                            />
+                        </div>
                     </div>
 
-                    <div style={{ width: '150px' }}>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500, fontSize: '0.875rem' }}>
-                            End Date
+                    {/* End Date */}
+                    <div style={{ flex: '0 0 160px' }}>
+                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.375rem' }}>
+                            To Date
                         </label>
-                        <input
-                            type="date"
-                            value={endDate}
-                            onChange={(e) => setEndDate(e.target.value)}
-                            style={{
-                                width: '100%',
-                                padding: '0.6rem',
-                                borderRadius: '8px',
-                                border: '1px solid #d1d5db',
-                                fontSize: '0.875rem'
-                            }}
-                        />
+                        <div style={{ position: 'relative' }}>
+                            <Calendar size={15} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-faint)' }} />
+                            <input
+                                type="date"
+                                value={endDate}
+                                onChange={(e) => setEndDate(e.target.value)}
+                                style={{ paddingLeft: '2.25rem' }}
+                            />
+                        </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button
-                            className="btn btn-primary"
-                            onClick={fetchLogs}
-                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                        >
-                            <Filter size={16} /> Filter
+                    {/* Actions */}
+                    <div style={{ display: 'flex', gap: '0.5rem', paddingBottom: '1px' }}>
+                        <button className="btn btn-primary" onClick={fetchLogs}>
+                            <Filter size={15} />
+                            Filter
                         </button>
-
-
-                        <button
-                            className="btn"
-                            onClick={handleExport}
-                            disabled={exporting}
-                            style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.5rem',
-                                backgroundColor: '#10b981',
-                                color: 'white'
-                            }}
-                        >
-                            <Download size={16} /> {exporting ? 'Exporting...' : 'Export CSV'}
-                        </button>
-
-                        <button
-                            className="btn"
-                            onClick={async () => {
-                                if (confirm("Recalculate total hours for the last 30 days? This will apply the 30-min break deduction to all existing logs.")) {
-                                    try {
-                                        setLoading(true);
-                                        const res = await axios.post('/api/v1/debug/recalculate-hours', {}, { params: { days: 30 } });
-                                        alert(res.data.message);
-                                        fetchLogs(); // Refresh logs
-                                    } catch (err: any) {
-                                        alert("Error: " + (err.response?.data?.detail || err.message));
-                                    } finally {
-                                        setLoading(false);
-                                    }
-                                }
-                            }}
-                            style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.5rem',
-                                backgroundColor: '#6366f1',
-                                color: 'white'
-                            }}
-                        >
-                            <Clock size={16} /> Sync Hours
-                        </button>
+                        {hasFilters && (
+                            <button className="btn btn-ghost" onClick={handleClearFilters} title="Clear filters">
+                                <X size={15} />
+                                Clear
+                            </button>
+                        )}
                     </div>
                 </div>
+
+                {/* Results count */}
+                {!loading && (
+                    <div style={{ marginTop: '0.875rem', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                        Showing <strong style={{ color: 'var(--text-main)' }}>{logs.length}</strong> record{logs.length !== 1 ? 's' : ''}
+                        {hasFilters && ' (filtered)'}
+                    </div>
+                )}
             </div>
 
+            {/* Table */}
             {loading ? (
-                <div className="p-4 text-center">Loading logs...</div>
-            ) : error ? (
-                <div className="p-4 text-red-600">Error: {error}</div>
+                <div className="loading-spinner">
+                    <div className="spinner" />
+                    <span>Loading attendance logs…</span>
+                </div>
             ) : (
-                <div className="card">
+                <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
                     <div className="table-container">
                         <table className="table">
                             <thead>
@@ -238,74 +252,146 @@ export default function AttendanceLogs() {
                                     <th>Check In</th>
                                     <th>Check Out</th>
                                     <th>Status</th>
-                                    <th>Total Hours</th>
-                                    <th>OT Hours</th>
+                                    <th>Hours</th>
+                                    <th>OT</th>
                                     <th>Face Match</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {(!logs || logs.length === 0) ? (
+                                {logs.length === 0 ? (
                                     <tr>
-                                        <td colSpan={8} style={{ textAlign: 'center', padding: '3rem' }}>
-                                            <div style={{ color: 'var(--text-muted)' }}>No attendance logs found matching filters</div>
+                                        <td colSpan={8}>
+                                            <div className="empty-state">
+                                                <div className="empty-state-icon">
+                                                    <FileText size={24} />
+                                                </div>
+                                                <div className="empty-state-title">No records found</div>
+                                                <div className="empty-state-desc">
+                                                    {hasFilters ? 'Try adjusting your filters' : 'No attendance logs available'}
+                                                </div>
+                                            </div>
                                         </td>
                                     </tr>
                                 ) : (
-                                    (logs || []).map(log => (
-                                        <tr key={log.id}>
-                                            <td>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                    <Calendar size={14} className="text-muted" />
-                                                    {formatDate(log.date)}
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <div style={{ fontWeight: 500 }}>{log.employee_name}</div>
-                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{log.emp_code}</div>
-                                            </td>
-                                            <td>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                    <Clock size={14} style={{ color: '#059669' }} />
-                                                    {formatTime(log.check_in)}
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                    <Clock size={14} style={{ color: '#dc2626' }} />
-                                                    {formatTime(log.check_out)}
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <span className={`badge ${log.status === 'present' ? 'badge-success' : 'badge-warning'}`}>
-                                                    {log.status.toUpperCase()}
-                                                </span>
-                                            </td>
-                                            <td>
-                                                {log.total_hours_worked > 0 ? (
-                                                    <span style={{ fontWeight: 500 }}>{log.total_hours_worked} hrs</span>
-                                                ) : '-'}
-                                            </td>
-                                            <td>
-                                                {(log.ot_hours > 0 || log.ot_weekend_hours > 0 || log.ot_holiday_hours > 0) ? (
-                                                    <div style={{ fontSize: '0.75rem' }}>
-                                                        {log.ot_hours > 0 && <div>Reg: {log.ot_hours}</div>}
-                                                        {log.ot_weekend_hours > 0 && <div>Wknd: {log.ot_weekend_hours}</div>}
-                                                        {log.ot_holiday_hours > 0 && <div>Hol: {log.ot_holiday_hours}</div>}
+                                    logs.map((log) => {
+                                        const totalOT = (log.ot_hours || 0) + (log.ot_weekend_hours || 0) + (log.ot_holiday_hours || 0);
+                                        const confidencePct = log.confidence ? Math.round(log.confidence * 100) : null;
+                                        const badgeClass = STATUS_BADGE[log.status] || 'badge-gray';
+
+                                        return (
+                                            <tr key={log.id}>
+                                                <td>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                        <Calendar size={13} style={{ color: 'var(--text-faint)', flexShrink: 0 }} />
+                                                        <span style={{ fontWeight: 500, color: 'var(--text-main)' }}>
+                                                            {formatDate(log.date)}
+                                                        </span>
                                                     </div>
-                                                ) : '-'}
-                                            </td>
-                                            <td>
-                                                {log.confidence ? (
-                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                                        <div style={{ height: '4px', width: '100%', background: '#eee', borderRadius: '2px', overflow: 'hidden' }}>
-                                                            <div style={{ height: '100%', width: `${log.confidence * 100}%`, background: log.confidence > 0.8 ? '#059669' : '#f59e0b' }}></div>
+                                                </td>
+                                                <td>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                                                        <div style={{
+                                                            width: '28px', height: '28px', borderRadius: '50%',
+                                                            background: `hsl(${log.employee_name.charCodeAt(0) * 5 % 360}, 65%, 90%)`,
+                                                            color: `hsl(${log.employee_name.charCodeAt(0) * 5 % 360}, 65%, 35%)`,
+                                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                            fontWeight: 700, fontSize: '0.7rem', flexShrink: 0,
+                                                        }}>
+                                                            {log.employee_name.charAt(0).toUpperCase()}
                                                         </div>
-                                                        <span style={{ fontSize: '0.7rem' }}>{(log.confidence * 100).toFixed(1)}%</span>
+                                                        <div>
+                                                            <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{log.employee_name}</div>
+                                                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                                                                {log.emp_code}
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                ) : '--'}
-                                            </td>
-                                        </tr>
-                                    ))
+                                                </td>
+                                                <td>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                                        <Clock size={13} style={{ color: '#10b981' }} />
+                                                        <span style={{ fontVariantNumeric: 'tabular-nums', color: log.check_in ? 'var(--text-secondary)' : 'var(--text-faint)' }}>
+                                                            {formatTime(log.check_in)}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                                        <Clock size={13} style={{ color: '#ef4444' }} />
+                                                        <span style={{ fontVariantNumeric: 'tabular-nums', color: log.check_out ? 'var(--text-secondary)' : 'var(--text-faint)' }}>
+                                                            {formatTime(log.check_out)}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <span className={`badge ${badgeClass}`} style={{ display: 'inline-flex', gap: '0.3rem', alignItems: 'center' }}>
+                                                        <span style={{
+                                                            width: '5px', height: '5px', borderRadius: '50%',
+                                                            background: 'currentColor', opacity: 0.7,
+                                                            display: 'inline-block',
+                                                        }} />
+                                                        {log.status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    {log.total_hours_worked > 0 ? (
+                                                        <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>
+                                                            {log.total_hours_worked} <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: '0.75rem' }}>hrs</span>
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ color: 'var(--text-faint)' }}>—</span>
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    {totalOT > 0 ? (
+                                                        <div style={{ fontSize: '0.78rem', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                            {log.ot_hours > 0 && (
+                                                                <span className="badge badge-purple" style={{ width: 'fit-content' }}>
+                                                                    {log.ot_hours}h Reg
+                                                                </span>
+                                                            )}
+                                                            {log.ot_weekend_hours > 0 && (
+                                                                <span className="badge badge-info" style={{ width: 'fit-content' }}>
+                                                                    {log.ot_weekend_hours}h Wknd
+                                                                </span>
+                                                            )}
+                                                            {log.ot_holiday_hours > 0 && (
+                                                                <span className="badge badge-warning" style={{ width: 'fit-content' }}>
+                                                                    {log.ot_holiday_hours}h Hol
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <span style={{ color: 'var(--text-faint)' }}>—</span>
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    {confidencePct !== null ? (
+                                                        <div style={{ minWidth: '70px' }}>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+                                                                <span style={{
+                                                                    fontSize: '0.72rem', fontWeight: 600,
+                                                                    color: confidencePct >= 80 ? '#059669' : '#d97706',
+                                                                }}>
+                                                                    {confidencePct}%
+                                                                </span>
+                                                            </div>
+                                                            <div style={{ height: '4px', background: '#f1f5f9', borderRadius: '9999px', overflow: 'hidden' }}>
+                                                                <div style={{
+                                                                    height: '100%',
+                                                                    width: `${confidencePct}%`,
+                                                                    background: confidencePct >= 80 ? '#10b981' : '#f59e0b',
+                                                                    borderRadius: '9999px',
+                                                                }} />
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <span style={{ color: 'var(--text-faint)' }}>—</span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
                                 )}
                             </tbody>
                         </table>

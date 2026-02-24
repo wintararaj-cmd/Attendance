@@ -90,7 +90,7 @@ export default function RegisterEmployee() {
         <div>
             <div className="page-header">
                 <h2>Register New Employee</h2>
-                <Link to="/employees" className="btn" style={{ background: '#e5e7eb', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Link to="/employees" className="btn btn-ghost">
                     <ArrowLeft size={18} />
                     Back to List
                 </Link>

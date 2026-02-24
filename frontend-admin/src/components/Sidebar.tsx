@@ -1,83 +1,98 @@
-import { LayoutDashboard, Users, UserPlus, Banknote, FileText, Building2, LogOut } from 'lucide-react';
-import { NavLink } from 'react-router-dom';
+import { LayoutDashboard, Users, UserPlus, Banknote, FileText, Building2, LogOut, Fingerprint } from 'lucide-react';
+import { NavLink, useLocation } from 'react-router-dom';
+
+const NAV_ITEMS = [
+  {
+    section: 'Overview',
+    items: [
+      { to: '/', icon: LayoutDashboard, label: 'Dashboard', exact: true },
+    ]
+  },
+  {
+    section: 'Management',
+    items: [
+      { to: '/employees', icon: Users, label: 'Employees' },
+      { to: '/departments', icon: Building2, label: 'Departments' },
+      { to: '/register', icon: UserPlus, label: 'Register Face' },
+    ]
+  },
+  {
+    section: 'Reports',
+    items: [
+      { to: '/payroll', icon: Banknote, label: 'Payroll' },
+      { to: '/logs', icon: FileText, label: 'Attendance Logs' },
+    ]
+  }
+];
 
 export default function Sidebar() {
+  const location = useLocation();
+
+  const handleLogout = () => {
+    if (confirm('Are you sure you want to logout?')) {
+      localStorage.removeItem('admin_token');
+      sessionStorage.removeItem('admin_token');
+      window.location.href = '/';
+    }
+  };
+
   return (
     <aside className="sidebar">
+      {/* Logo / Brand */}
       <div className="sidebar-header">
-        <LayoutDashboard size={28} />
-        <span>HR Admin</span>
+        <div className="sidebar-logo">
+          <div className="sidebar-logo-icon">
+            <Fingerprint size={20} color="white" />
+          </div>
+          <div>
+            <div className="sidebar-logo-text">AttendSys</div>
+            <div className="sidebar-logo-sub">HR Admin Panel</div>
+          </div>
+        </div>
       </div>
 
-      <nav>
-        <NavLink
-          to="/"
-          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-        >
-          <LayoutDashboard size={20} />
-          Dashboard
-        </NavLink>
+      {/* Navigation */}
+      <nav className="sidebar-nav">
+        {NAV_ITEMS.map(({ section, items }) => (
+          <div key={section}>
+            <div className="sidebar-section-title">{section}</div>
+            {items.map(({ to, icon: Icon, label, exact }) => {
+              const isActive = exact
+                ? location.pathname === to
+                : location.pathname.startsWith(to);
 
-        <NavLink
-          to="/employees"
-          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-        >
-          <Users size={20} />
-          Employees
-        </NavLink>
-
-        <NavLink
-          to="/departments"
-          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-        >
-          <Building2 size={20} />
-          Departments
-        </NavLink>
-
-        <NavLink
-          to="/register"
-          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-        >
-          <UserPlus size={20} />
-          Register Face
-        </NavLink>
-
-        <NavLink
-          to="/payroll"
-          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-        >
-          <Banknote size={20} />
-          Payroll
-        </NavLink>
-
-        <NavLink
-          to="/logs"
-          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-        >
-          <FileText size={20} />
-          Attendance Logs
-        </NavLink>
+              return (
+                <NavLink
+                  key={to}
+                  to={to}
+                  className={`nav-item ${isActive ? 'active' : ''}`}
+                  end={exact}
+                >
+                  <Icon size={17} />
+                  {label}
+                </NavLink>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
-      <div style={{ marginTop: 'auto', padding: '1rem' }}>
+      {/* Footer / User Info */}
+      <div className="sidebar-footer">
+        <div className="sidebar-user">
+          <div className="sidebar-avatar">A</div>
+          <div className="sidebar-user-info">
+            <div className="sidebar-user-name">Administrator</div>
+            <div className="sidebar-user-role">Super Admin</div>
+          </div>
+        </div>
+
         <button
-          onClick={() => {
-            if (confirm('Are you sure you want to logout?')) {
-              localStorage.removeItem('admin_token');
-              window.location.href = '/';
-            }
-          }}
+          onClick={handleLogout}
           className="nav-item"
-          style={{
-            width: '100%',
-            background: 'none',
-            border: 'none',
-            color: '#ef4444',
-            cursor: 'pointer',
-            marginTop: 'auto'
-          }}
+          style={{ color: '#f87171', width: '100%', border: 'none' }}
         >
-          <LogOut size={20} />
+          <LogOut size={17} />
           Logout
         </button>
       </div>

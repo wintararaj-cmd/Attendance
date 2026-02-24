@@ -644,418 +644,420 @@ export default function PayrollManagement() {
 
             {/* Config Modal */}
             {showConfigModal && (
-                <div style={modalOverlayStyle}>
-                    <div className="card" style={{ width: '500px', maxHeight: '90vh', overflowY: 'auto' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+                <div className="modal-overlay">
+                    <div className="modal" style={{ maxWidth: '600px' }}>
+                        <div className="modal-header">
                             <div>
-                                <h3 style={{ margin: 0 }}>Configure Salary Structure</h3>
-                                <p style={{ margin: '0.5rem 0 0 0', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                                <h3 className="modal-title">Configure Salary Structure</h3>
+                                <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.875rem' }}>
                                     {configEmpName}
                                 </p>
                             </div>
-                            <button
-                                onClick={() => setShowConfigModal(false)}
-                                style={{ background: 'none', border: 'none', cursor: 'pointer' }}
-                            >
-                                <X size={24} />
+                            <button className="modal-close" onClick={() => setShowConfigModal(false)}>
+                                <X size={16} />
                             </button>
                         </div>
 
-                        <div style={{ display: 'grid', gap: '1.5rem' }}>
-                            {/* Employment Type & Rates Section */}
-                            <div>
-                                <h4 style={{ margin: '0 0 1rem 0', color: '#7c3aed', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    <Users size={18} />
-                                    Employment Type & Rates
-                                </h4>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', gridColumn: 'span 2', padding: '1rem', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #bae6fd' }}>
-                                        <input
-                                            type="checkbox"
-                                            checked={salaryForm.is_hourly_based}
-                                            onChange={e => setSalaryForm({ ...salaryForm, is_hourly_based: e.target.checked })}
-                                            style={{ width: '20px', height: '20px', cursor: 'pointer' }}
-                                        />
-                                        <div>
-                                            <span style={{ fontWeight: 600, display: 'block', color: '#0369a1' }}>Worker (Daily Rate Based)</span>
-                                            <span style={{ fontSize: '0.8rem', color: '#0c4a6e' }}>Check this for Daily Wages. Uncheck for Staff (Monthly Salary).</span>
-                                        </div>
-                                    </label>
+                        <div className="modal-body">
+                            <div style={{ display: 'grid', gap: '1.5rem' }}>
+                                {/* Employment Type & Rates Section */}
+                                <div>
+                                    <h4 style={{ margin: '0 0 1rem 0', color: '#7c3aed', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <Users size={18} />
+                                        Employment Type & Rates
+                                    </h4>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', gridColumn: 'span 2', padding: '1rem', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #bae6fd' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={salaryForm.is_hourly_based}
+                                                onChange={e => setSalaryForm({ ...salaryForm, is_hourly_based: e.target.checked })}
+                                                style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                                            />
+                                            <div>
+                                                <span style={{ fontWeight: 600, display: 'block', color: '#0369a1' }}>Worker (Daily Rate Based)</span>
+                                                <span style={{ fontSize: '0.8rem', color: '#0c4a6e' }}>Check this for Daily Wages. Uncheck for Staff (Monthly Salary).</span>
+                                            </div>
+                                        </label>
 
-                                    {salaryForm.is_hourly_based && (
+                                        {salaryForm.is_hourly_based && (
+                                            <div>
+                                                <label style={labelStyle}>Hourly Rate (₹)</label>
+                                                <input
+                                                    type="number"
+                                                    className="input"
+                                                    value={salaryForm.hourly_rate}
+                                                    onChange={e => setSalaryForm({ ...salaryForm, hourly_rate: Number(e.target.value) })}
+                                                    placeholder="e.g., 200"
+                                                />
+                                            </div>
+                                        )}
+
                                         <div>
-                                            <label style={labelStyle}>Hourly Rate (₹)</label>
+                                            <label style={labelStyle}>Contract Rate (Per Day)</label>
                                             <input
                                                 type="number"
                                                 className="input"
-                                                value={salaryForm.hourly_rate}
-                                                onChange={e => setSalaryForm({ ...salaryForm, hourly_rate: Number(e.target.value) })}
+                                                value={salaryForm.contract_rate_per_day}
+                                                onChange={e => setSalaryForm({ ...salaryForm, contract_rate_per_day: Number(e.target.value) })}
+                                                placeholder="e.g., 1000"
+                                            />
+                                            <span style={{ fontSize: '0.75rem', color: '#666' }}>For contract workers</span>
+                                        </div>
+                                    </div>
+
+                                    <h5 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem', color: '#555' }}>Overtime Multipliers</h5>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+                                        <div>
+                                            <label style={labelStyle}>Weekday OT</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                step="0.1"
+                                                value={salaryForm.ot_rate_multiplier}
+                                                onChange={e => setSalaryForm({ ...salaryForm, ot_rate_multiplier: Number(e.target.value) })}
+                                                placeholder="1.5"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Weekend OT</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                step="0.1"
+                                                value={salaryForm.ot_weekend_multiplier}
+                                                onChange={e => setSalaryForm({ ...salaryForm, ot_weekend_multiplier: Number(e.target.value) })}
+                                                placeholder="2.0"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Holiday OT</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                step="0.1"
+                                                value={salaryForm.ot_holiday_multiplier}
+                                                onChange={e => setSalaryForm({ ...salaryForm, ot_holiday_multiplier: Number(e.target.value) })}
+                                                placeholder="2.5"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                                {/* Earnings Section */}
+                                <div>
+                                    <h4 style={{ margin: '0 0 1rem 0', color: '#059669', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <TrendingUp size={18} />
+                                        Earnings & Allowances
+                                    </h4>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                        <div>
+                                            <label style={labelStyle}>Basic {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'} *</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={salaryForm.basic_salary}
+                                                onChange={e => setSalaryForm({ ...salaryForm, basic_salary: Number(e.target.value) })}
+                                                placeholder="e.g., 15000"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>HRA {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'}</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={salaryForm.hra}
+                                                onChange={e => setSalaryForm({ ...salaryForm, hra: Number(e.target.value) })}
+                                                placeholder="e.g., 5000"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Conveyance {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'}</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={salaryForm.conveyance_allowance}
+                                                onChange={e => setSalaryForm({ ...salaryForm, conveyance_allowance: Number(e.target.value) })}
+                                                placeholder="e.g., 1600"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Medical {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'}</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={salaryForm.medical_allowance}
+                                                onChange={e => setSalaryForm({ ...salaryForm, medical_allowance: Number(e.target.value) })}
+                                                placeholder="e.g., 1250"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Special {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'}</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={salaryForm.special_allowance}
+                                                onChange={e => setSalaryForm({ ...salaryForm, special_allowance: Number(e.target.value) })}
+                                                placeholder="e.g., 3000"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Education {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'}</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={salaryForm.education_allowance}
+                                                onChange={e => setSalaryForm({ ...salaryForm, education_allowance: Number(e.target.value) })}
+                                                placeholder="e.g., 100"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Other {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'}</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={salaryForm.other_allowance}
+                                                onChange={e => setSalaryForm({ ...salaryForm, other_allowance: Number(e.target.value) })}
+                                                placeholder="e.g., 500"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {salaryForm.is_hourly_based && (
+                                        <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#ecfeff', borderRadius: '6px', border: '1px solid #a5f3fc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ color: '#0e7490', fontWeight: 600 }}>Total Daily Rate:</span>
+                                            <span style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0891b2' }}>
+                                                ₹{(
+                                                    (salaryForm.basic_salary || 0) +
+                                                    (salaryForm.hra || 0) +
+                                                    (salaryForm.conveyance_allowance || 0) +
+                                                    (salaryForm.medical_allowance || 0) +
+                                                    (salaryForm.special_allowance || 0) +
+                                                    (salaryForm.education_allowance || 0) +
+                                                    (salaryForm.other_allowance || 0)
+                                                ).toFixed(2)}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Deductions Section */}
+                                <div>
+                                    <h4 style={{ margin: '0 0 1rem 0', color: '#dc2626', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <DollarSign size={18} />
+                                        Deductions
+                                    </h4>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                        <div>
+                                            <label style={labelStyle}>PF Employee (12%)</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={salaryForm.pf_employee}
+                                                onChange={e => setSalaryForm({ ...salaryForm, pf_employee: Number(e.target.value) })}
+                                                placeholder="e.g., 1800"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>PF Employer (12%)</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={salaryForm.pf_employer}
+                                                onChange={e => setSalaryForm({ ...salaryForm, pf_employer: Number(e.target.value) })}
+                                                placeholder="e.g., 1800"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>ESI Employee (0.75%)</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={salaryForm.esi_employee}
+                                                onChange={e => setSalaryForm({ ...salaryForm, esi_employee: Number(e.target.value) })}
+                                                placeholder="e.g., 150"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>ESI Employer (3.25%)</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={salaryForm.esi_employer}
+                                                onChange={e => setSalaryForm({ ...salaryForm, esi_employer: Number(e.target.value) })}
+                                                placeholder="e.g., 650"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Professional Tax</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={salaryForm.professional_tax}
+                                                onChange={e => setSalaryForm({ ...salaryForm, professional_tax: Number(e.target.value) })}
                                                 placeholder="e.g., 200"
                                             />
                                         </div>
-                                    )}
-
-                                    <div>
-                                        <label style={labelStyle}>Contract Rate (Per Day)</label>
-                                        <input
-                                            type="number"
-                                            className="input"
-                                            value={salaryForm.contract_rate_per_day}
-                                            onChange={e => setSalaryForm({ ...salaryForm, contract_rate_per_day: Number(e.target.value) })}
-                                            placeholder="e.g., 1000"
-                                        />
-                                        <span style={{ fontSize: '0.75rem', color: '#666' }}>For contract workers</span>
+                                        <div>
+                                            <label style={labelStyle}>TDS</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={salaryForm.tds}
+                                                onChange={e => setSalaryForm({ ...salaryForm, tds: Number(e.target.value) })}
+                                                placeholder="e.g., 500"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
 
-                                <h5 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem', color: '#555' }}>Overtime Multipliers</h5>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
-                                    <div>
-                                        <label style={labelStyle}>Weekday OT</label>
-                                        <input
-                                            type="number"
-                                            className="input"
-                                            step="0.1"
-                                            value={salaryForm.ot_rate_multiplier}
-                                            onChange={e => setSalaryForm({ ...salaryForm, ot_rate_multiplier: Number(e.target.value) })}
-                                            placeholder="1.5"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>Weekend OT</label>
-                                        <input
-                                            type="number"
-                                            className="input"
-                                            step="0.1"
-                                            value={salaryForm.ot_weekend_multiplier}
-                                            onChange={e => setSalaryForm({ ...salaryForm, ot_weekend_multiplier: Number(e.target.value) })}
-                                            placeholder="2.0"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>Holiday OT</label>
-                                        <input
-                                            type="number"
-                                            className="input"
-                                            step="0.1"
-                                            value={salaryForm.ot_holiday_multiplier}
-                                            onChange={e => setSalaryForm({ ...salaryForm, ot_holiday_multiplier: Number(e.target.value) })}
-                                            placeholder="2.5"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                            {/* Earnings Section */}
-                            <div>
-                                <h4 style={{ margin: '0 0 1rem 0', color: '#059669', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    <TrendingUp size={18} />
-                                    Earnings & Allowances
-                                </h4>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                    <div>
-                                        <label style={labelStyle}>Basic {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'} *</label>
-                                        <input
-                                            type="number"
-                                            className="input"
-                                            value={salaryForm.basic_salary}
-                                            onChange={e => setSalaryForm({ ...salaryForm, basic_salary: Number(e.target.value) })}
-                                            placeholder="e.g., 15000"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>HRA {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'}</label>
-                                        <input
-                                            type="number"
-                                            className="input"
-                                            value={salaryForm.hra}
-                                            onChange={e => setSalaryForm({ ...salaryForm, hra: Number(e.target.value) })}
-                                            placeholder="e.g., 5000"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>Conveyance {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'}</label>
-                                        <input
-                                            type="number"
-                                            className="input"
-                                            value={salaryForm.conveyance_allowance}
-                                            onChange={e => setSalaryForm({ ...salaryForm, conveyance_allowance: Number(e.target.value) })}
-                                            placeholder="e.g., 1600"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>Medical {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'}</label>
-                                        <input
-                                            type="number"
-                                            className="input"
-                                            value={salaryForm.medical_allowance}
-                                            onChange={e => setSalaryForm({ ...salaryForm, medical_allowance: Number(e.target.value) })}
-                                            placeholder="e.g., 1250"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>Special {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'}</label>
-                                        <input
-                                            type="number"
-                                            className="input"
-                                            value={salaryForm.special_allowance}
-                                            onChange={e => setSalaryForm({ ...salaryForm, special_allowance: Number(e.target.value) })}
-                                            placeholder="e.g., 3000"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>Education {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'}</label>
-                                        <input
-                                            type="number"
-                                            className="input"
-                                            value={salaryForm.education_allowance}
-                                            onChange={e => setSalaryForm({ ...salaryForm, education_allowance: Number(e.target.value) })}
-                                            placeholder="e.g., 100"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>Other {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'}</label>
-                                        <input
-                                            type="number"
-                                            className="input"
-                                            value={salaryForm.other_allowance}
-                                            onChange={e => setSalaryForm({ ...salaryForm, other_allowance: Number(e.target.value) })}
-                                            placeholder="e.g., 500"
-                                        />
+                                {/* Benefits Section */}
+                                <div>
+                                    <h4 style={{ margin: '0 0 1rem 0', color: '#2563eb', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <TrendingUp size={18} />
+                                        Benefits
+                                    </h4>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                        <div>
+                                            <label style={labelStyle}>Bonus</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={salaryForm.bonus}
+                                                onChange={e => setSalaryForm({ ...salaryForm, bonus: Number(e.target.value) })}
+                                                placeholder="e.g., 2000"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Incentive</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={salaryForm.incentive}
+                                                onChange={e => setSalaryForm({ ...salaryForm, incentive: Number(e.target.value) })}
+                                                placeholder="e.g., 1000"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
 
-                                {salaryForm.is_hourly_based && (
-                                    <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#ecfeff', borderRadius: '6px', border: '1px solid #a5f3fc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <span style={{ color: '#0e7490', fontWeight: 600 }}>Total Daily Rate:</span>
-                                        <span style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0891b2' }}>
+                                {/* Settings Section */}
+                                <div>
+                                    <h4 style={{ margin: '0 0 1rem 0', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <Settings size={18} />
+                                        Calculation Settings
+                                    </h4>
+                                    <div style={{ display: 'grid', gap: '0.75rem' }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={salaryForm.is_pf_applicable}
+                                                onChange={e => setSalaryForm({ ...salaryForm, is_pf_applicable: e.target.checked })}
+                                                style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                                            />
+                                            <span>PF Applicable</span>
+                                        </label>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={salaryForm.is_esi_applicable}
+                                                onChange={e => setSalaryForm({ ...salaryForm, is_esi_applicable: e.target.checked })}
+                                                style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                                            />
+                                            <span>ESI Applicable</span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                {/* Summary */}
+                                <div style={{
+                                    padding: '1rem',
+                                    background: '#f8fafc',
+                                    borderRadius: '8px',
+                                    border: '1px solid #e2e8f0'
+                                }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                        <span style={{ color: 'var(--text-muted)' }}>Gross Salary:</span>
+                                        <span style={{ fontWeight: 600 }}>
                                             ₹{(
-                                                (salaryForm.basic_salary || 0) +
-                                                (salaryForm.hra || 0) +
-                                                (salaryForm.conveyance_allowance || 0) +
-                                                (salaryForm.medical_allowance || 0) +
-                                                (salaryForm.special_allowance || 0) +
-                                                (salaryForm.education_allowance || 0) +
-                                                (salaryForm.other_allowance || 0)
-                                            ).toFixed(2)}
+                                                salaryForm.basic_salary +
+                                                salaryForm.hra +
+                                                salaryForm.conveyance_allowance +
+                                                salaryForm.medical_allowance +
+                                                salaryForm.special_allowance +
+                                                salaryForm.education_allowance +
+                                                salaryForm.other_allowance
+                                            ).toLocaleString('en-IN')}
                                         </span>
                                     </div>
-                                )}
-                            </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                        <span style={{ color: 'var(--text-muted)' }}>Total Deductions:</span>
+                                        <span style={{ fontWeight: 600, color: '#dc2626' }}>
+                                            ₹{(
+                                                salaryForm.pf_employee +
+                                                salaryForm.esi_employee +
+                                                salaryForm.professional_tax +
+                                                salaryForm.tds
+                                            ).toLocaleString('en-IN')}
+                                        </span>
+                                    </div>
+                                    <div style={{
+                                        borderTop: '2px solid #cbd5e1',
+                                        paddingTop: '0.5rem',
+                                        marginTop: '0.5rem',
+                                        display: 'flex',
+                                        justifyContent: 'space-between'
+                                    }}>
+                                        <span style={{ fontWeight: 600 }}>Net Salary:</span>
+                                        <span style={{ fontWeight: 700, fontSize: '1.25rem', color: '#2563eb' }}>
+                                            ₹{(
+                                                salaryForm.basic_salary +
+                                                salaryForm.hra +
+                                                salaryForm.conveyance_allowance +
+                                                salaryForm.medical_allowance +
+                                                salaryForm.special_allowance +
+                                                salaryForm.education_allowance +
+                                                salaryForm.other_allowance +
+                                                salaryForm.bonus +
+                                                salaryForm.incentive -
+                                                salaryForm.pf_employee -
+                                                salaryForm.esi_employee -
+                                                salaryForm.professional_tax -
+                                                salaryForm.tds
+                                            ).toLocaleString('en-IN')}
+                                        </span>
+                                    </div>
+                                </div>
 
-                            {/* Deductions Section */}
-                            <div>
-                                <h4 style={{ margin: '0 0 1rem 0', color: '#dc2626', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    <DollarSign size={18} />
-                                    Deductions
-                                </h4>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                    <div>
-                                        <label style={labelStyle}>PF Employee (12%)</label>
-                                        <input
-                                            type="number"
-                                            className="input"
-                                            value={salaryForm.pf_employee}
-                                            onChange={e => setSalaryForm({ ...salaryForm, pf_employee: Number(e.target.value) })}
-                                            placeholder="e.g., 1800"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>PF Employer (12%)</label>
-                                        <input
-                                            type="number"
-                                            className="input"
-                                            value={salaryForm.pf_employer}
-                                            onChange={e => setSalaryForm({ ...salaryForm, pf_employer: Number(e.target.value) })}
-                                            placeholder="e.g., 1800"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>ESI Employee (0.75%)</label>
-                                        <input
-                                            type="number"
-                                            className="input"
-                                            value={salaryForm.esi_employee}
-                                            onChange={e => setSalaryForm({ ...salaryForm, esi_employee: Number(e.target.value) })}
-                                            placeholder="e.g., 150"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>ESI Employer (3.25%)</label>
-                                        <input
-                                            type="number"
-                                            className="input"
-                                            value={salaryForm.esi_employer}
-                                            onChange={e => setSalaryForm({ ...salaryForm, esi_employer: Number(e.target.value) })}
-                                            placeholder="e.g., 650"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>Professional Tax</label>
-                                        <input
-                                            type="number"
-                                            className="input"
-                                            value={salaryForm.professional_tax}
-                                            onChange={e => setSalaryForm({ ...salaryForm, professional_tax: Number(e.target.value) })}
-                                            placeholder="e.g., 200"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>TDS</label>
-                                        <input
-                                            type="number"
-                                            className="input"
-                                            value={salaryForm.tds}
-                                            onChange={e => setSalaryForm({ ...salaryForm, tds: Number(e.target.value) })}
-                                            placeholder="e.g., 500"
-                                        />
-                                    </div>
-                                </div>
                             </div>
-
-                            {/* Benefits Section */}
-                            <div>
-                                <h4 style={{ margin: '0 0 1rem 0', color: '#2563eb', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    <TrendingUp size={18} />
-                                    Benefits
-                                </h4>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                    <div>
-                                        <label style={labelStyle}>Bonus</label>
-                                        <input
-                                            type="number"
-                                            className="input"
-                                            value={salaryForm.bonus}
-                                            onChange={e => setSalaryForm({ ...salaryForm, bonus: Number(e.target.value) })}
-                                            placeholder="e.g., 2000"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>Incentive</label>
-                                        <input
-                                            type="number"
-                                            className="input"
-                                            value={salaryForm.incentive}
-                                            onChange={e => setSalaryForm({ ...salaryForm, incentive: Number(e.target.value) })}
-                                            placeholder="e.g., 1000"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Settings Section */}
-                            <div>
-                                <h4 style={{ margin: '0 0 1rem 0', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    <Settings size={18} />
-                                    Calculation Settings
-                                </h4>
-                                <div style={{ display: 'grid', gap: '0.75rem' }}>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                                        <input
-                                            type="checkbox"
-                                            checked={salaryForm.is_pf_applicable}
-                                            onChange={e => setSalaryForm({ ...salaryForm, is_pf_applicable: e.target.checked })}
-                                            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                                        />
-                                        <span>PF Applicable</span>
-                                    </label>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                                        <input
-                                            type="checkbox"
-                                            checked={salaryForm.is_esi_applicable}
-                                            onChange={e => setSalaryForm({ ...salaryForm, is_esi_applicable: e.target.checked })}
-                                            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                                        />
-                                        <span>ESI Applicable</span>
-                                    </label>
-                                </div>
-                            </div>
-
-                            {/* Summary */}
-                            <div style={{
-                                padding: '1rem',
-                                background: '#f8fafc',
-                                borderRadius: '8px',
-                                border: '1px solid #e2e8f0'
-                            }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                    <span style={{ color: 'var(--text-muted)' }}>Gross Salary:</span>
-                                    <span style={{ fontWeight: 600 }}>
-                                        ₹{(
-                                            salaryForm.basic_salary +
-                                            salaryForm.hra +
-                                            salaryForm.conveyance_allowance +
-                                            salaryForm.medical_allowance +
-                                            salaryForm.special_allowance +
-                                            salaryForm.education_allowance +
-                                            salaryForm.other_allowance
-                                        ).toLocaleString('en-IN')}
-                                    </span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                    <span style={{ color: 'var(--text-muted)' }}>Total Deductions:</span>
-                                    <span style={{ fontWeight: 600, color: '#dc2626' }}>
-                                        ₹{(
-                                            salaryForm.pf_employee +
-                                            salaryForm.esi_employee +
-                                            salaryForm.professional_tax +
-                                            salaryForm.tds
-                                        ).toLocaleString('en-IN')}
-                                    </span>
-                                </div>
-                                <div style={{
-                                    borderTop: '2px solid #cbd5e1',
-                                    paddingTop: '0.5rem',
-                                    marginTop: '0.5rem',
-                                    display: 'flex',
-                                    justifyContent: 'space-between'
-                                }}>
-                                    <span style={{ fontWeight: 600 }}>Net Salary:</span>
-                                    <span style={{ fontWeight: 700, fontSize: '1.25rem', color: '#2563eb' }}>
-                                        ₹{(
-                                            salaryForm.basic_salary +
-                                            salaryForm.hra +
-                                            salaryForm.conveyance_allowance +
-                                            salaryForm.medical_allowance +
-                                            salaryForm.special_allowance +
-                                            salaryForm.education_allowance +
-                                            salaryForm.other_allowance +
-                                            salaryForm.bonus +
-                                            salaryForm.incentive -
-                                            salaryForm.pf_employee -
-                                            salaryForm.esi_employee -
-                                            salaryForm.professional_tax -
-                                            salaryForm.tds
-                                        ).toLocaleString('en-IN')}
-                                    </span>
-                                </div>
-                            </div>
-
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-ghost" onClick={() => setShowConfigModal(false)}>
+                                Cancel
+                            </button>
                             <button
                                 className="btn btn-primary"
                                 onClick={handleSaveSalary}
-                                style={{ width: '100%', padding: '0.75rem' }}
                             >
                                 Save Salary Configuration
                             </button>
                         </div>
                     </div>
                 </div>
-            )
-            }
+            )}
 
             {/* Payslip Modal */}
-            {
-                selectedPayroll && (
-                    <div style={modalOverlayStyle}>
-                        <div className="card" style={{ width: '550px', maxHeight: '90vh', overflowY: 'auto' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                                <h3 style={{ margin: 0 }}>Payslip Preview</h3>
-                                <button onClick={() => setSelectedPayroll(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-                                    <X size={24} />
-                                </button>
-                            </div>
+            {selectedPayroll && (
+                <div className="modal-overlay">
+                    <div className="modal" style={{ maxWidth: '650px' }}>
+                        <div className="modal-header">
+                            <h3 className="modal-title">Payslip Preview</h3>
+                            <button className="modal-close" onClick={() => setSelectedPayroll(null)}>
+                                <X size={16} />
+                            </button>
+                        </div>
 
-                            <div style={{ textAlign: 'center', marginBottom: '1.5rem', paddingBottom: '1.5rem', borderBottom: '2px solid #e2e8f0' }}>
+                        <div className="modal-body">
+                            <div style={{ textAlign: 'center', marginBottom: '1.5rem', paddingBottom: '1.5rem', borderBottom: '1px solid var(--border)' }}>
                                 <h2 style={{ fontSize: '1.5rem', margin: '0 0 0.5rem 0', color: 'var(--primary)' }}>
                                     {selectedPayroll.employee_name}
                                 </h2>
@@ -1189,27 +1191,30 @@ export default function PayrollManagement() {
                                 </div>
                             </div>
 
-                            <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
-                                <button
-                                    className="btn"
-                                    style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '0.5rem', padding: '0.75rem', background: '#ecfdf5', color: '#059669', border: '1px solid #059669' }}
-                                    onClick={handleGenerateSingle}
-                                >
-                                    <Save size={18} /> Approve &amp; Save
-                                </button>
-                                <button
-                                    className="btn btn-primary"
-                                    style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '0.5rem', padding: '0.75rem' }}
-                                    onClick={handleDownloadPdf}
-                                >
-                                    <Download size={18} /> Download PDF
-                                </button>
-                            </div>
                         </div>
                     </div>
-                )
-            }
-        </div>
+                    <div className="modal-footer">
+                        <button className="btn btn-ghost" onClick={() => setSelectedPayroll(null)}>
+                            Cancel
+                        </button>
+                        <button
+                            className="btn btn-success"
+                            onClick={handleGenerateSingle}
+                        >
+                            <Save size={16} /> Approve &amp; Save
+                        </button>
+                        <button
+                            className="btn btn-primary"
+                            onClick={handleDownloadPdf}
+                        >
+                            <Download size={16} /> Download PDF
+                        </button>
+                    </div>
+                </div>
+                </div>
+    )
+}
+        </div >
     );
 }
 

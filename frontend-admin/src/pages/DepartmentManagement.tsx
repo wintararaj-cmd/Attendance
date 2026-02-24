@@ -197,16 +197,14 @@ export default function DepartmentManagement() {
                                             <div style={{ display: 'flex', gap: '0.5rem' }}>
                                                 <button
                                                     onClick={() => handleEdit(dept)}
-                                                    className="btn btn-sm"
-                                                    style={{ padding: '0.375rem 0.75rem' }}
+                                                    className="btn btn-ghost btn-sm btn-icon"
                                                     title="Edit"
                                                 >
                                                     <Edit2 size={14} />
                                                 </button>
                                                 <button
                                                     onClick={() => handleDelete(dept.id)}
-                                                    className="btn btn-sm"
-                                                    style={{ padding: '0.375rem 0.75rem', background: '#fee2e2', color: '#dc2626' }}
+                                                    className="btn btn-danger btn-sm btn-icon"
                                                     title="Delete"
                                                 >
                                                     <Trash2 size={14} />
@@ -223,32 +221,15 @@ export default function DepartmentManagement() {
 
             {/* Create/Edit Modal */}
             {showModal && (
-                <div style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    background: 'rgba(0, 0, 0, 0.5)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    zIndex: 1000
-                }}>
-                    <div className="card" style={{ maxWidth: '600px', width: '90%', maxHeight: '90vh', overflow: 'auto' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                            <h3 style={{ margin: 0 }}>{editingDept ? 'Edit Department' : 'Create Department'}</h3>
-                            <button
-                                onClick={() => setShowModal(false)}
-                                className="btn btn-sm"
-                                style={{ padding: '0.5rem' }}
-                            >
-                                <X size={18} />
-                            </button>
+                <div className="modal-overlay">
+                    <div className="modal">
+                        <div className="modal-header">
+                            <h3 className="modal-title">{editingDept ? 'Edit Department' : 'Create Department'}</h3>
+                            <button className="modal-close" onClick={() => setShowModal(false)}><X size={16} /></button>
                         </div>
-
-                        <form onSubmit={handleSubmit}>
-                            <div style={{ display: 'grid', gap: '1rem' }}>
+                        <div className="modal-body">
+                            <form onSubmit={handleSubmit} id="dept-form">
+                                <div style={{ display: 'grid', gap: '1rem' }}>
                                 <div>
                                     <label>Department Name *</label>
                                     <input
@@ -297,26 +278,21 @@ export default function DepartmentManagement() {
                                 </div>
                             </div>
 
-                            <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem', justifyContent: 'flex-end' }}>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowModal(false)}
-                                    className="btn"
-                                    style={{ background: '#f3f4f6', color: '#374151' }}
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    className="btn btn-primary"
-                                >
-                                    {editingDept ? 'Update' : 'Create'} Department
-                                </button>
-                            </div>
-                        </form>
+                                </div>
+                            </form>
+                        </div>
+                        <div className="modal-footer">
+                            <button type="button" onClick={() => setShowModal(false)} className="btn btn-ghost">
+                                Cancel
+                            </button>
+                            <button type="submit" form="dept-form" className="btn btn-primary">
+                                {editingDept ? 'Update' : 'Create'} Department
+                            </button>
+                        </div>
                     </div>
-                </div>
-            )}
-        </div>
+                </div >
+            )
+}
+        </div >
     );
 }
