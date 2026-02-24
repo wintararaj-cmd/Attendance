@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import {
-    Users, UserCheck, UserX, TrendingUp, Building2, Briefcase,
-    Clock, RefreshCw, ArrowUpRight, Activity, BarChart2
+    Users, UserCheck, UserX, Building2, Briefcase,
+    Clock, RefreshCw, Activity, BarChart2
 } from 'lucide-react';
 
 interface DashboardStats {

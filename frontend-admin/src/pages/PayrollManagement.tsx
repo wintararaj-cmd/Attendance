@@ -342,7 +342,6 @@ export default function PayrollManagement() {
     const departments = Array.from(new Set(employees.map(e => e.department).filter(Boolean)));
 
     const labelStyle = { fontSize: '0.85rem', fontWeight: 600, color: '#4b5563', display: 'block', marginBottom: '0.25rem' };
-    const modalOverlayStyle: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 };
 
     const handleDownloadPayslip = async (empId: string, empName: string) => {
         try {
@@ -1192,29 +1191,27 @@ export default function PayrollManagement() {
                             </div>
 
                         </div>
-                    </div>
-                    <div className="modal-footer">
-                        <button className="btn btn-ghost" onClick={() => setSelectedPayroll(null)}>
-                            Cancel
-                        </button>
-                        <button
-                            className="btn btn-success"
-                            onClick={handleGenerateSingle}
-                        >
-                            <Save size={16} /> Approve &amp; Save
-                        </button>
-                        <button
-                            className="btn btn-primary"
-                            onClick={handleDownloadPdf}
-                        >
-                            <Download size={16} /> Download PDF
-                        </button>
+                        <div className="modal-footer">
+                            <button className="btn btn-ghost" onClick={() => setSelectedPayroll(null)}>
+                                Cancel
+                            </button>
+                            <button
+                                className="btn btn-success"
+                                onClick={handleGenerateSingle}
+                            >
+                                <Save size={16} /> Approve &amp; Save
+                            </button>
+                            <button
+                                className="btn btn-primary"
+                                onClick={handleDownloadPdf}
+                            >
+                                <Download size={16} /> Download PDF
+                            </button>
+                        </div>
                     </div>
                 </div>
-                </div>
-    )
-}
-        </div >
+            )}
+        </div>
     );
 }
 

@@ -230,54 +230,52 @@ export default function DepartmentManagement() {
                         <div className="modal-body">
                             <form onSubmit={handleSubmit} id="dept-form">
                                 <div style={{ display: 'grid', gap: '1rem' }}>
-                                <div>
-                                    <label>Department Name *</label>
-                                    <input
-                                        type="text"
-                                        className="input"
-                                        value={formData.name}
-                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                        required
-                                        placeholder="e.g., IT, HR, Finance"
-                                    />
-                                </div>
+                                    <div>
+                                        <label>Department Name *</label>
+                                        <input
+                                            type="text"
+                                            className="input"
+                                            value={formData.name}
+                                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                            required
+                                            placeholder="e.g., IT, HR, Finance"
+                                        />
+                                    </div>
 
-                                <div>
-                                    <label>Description</label>
-                                    <textarea
-                                        className="input"
-                                        value={formData.description}
-                                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                                        placeholder="Brief description of the department"
-                                        rows={3}
-                                        style={{ resize: 'vertical' }}
-                                    />
-                                </div>
+                                    <div>
+                                        <label>Description</label>
+                                        <textarea
+                                            className="input"
+                                            value={formData.description}
+                                            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                                            placeholder="Brief description of the department"
+                                            rows={3}
+                                            style={{ resize: 'vertical' }}
+                                        />
+                                    </div>
 
-                                <div>
-                                    <label>Department Head</label>
-                                    <input
-                                        type="text"
-                                        className="input"
-                                        value={formData.department_head}
-                                        onChange={(e) => setFormData({ ...formData, department_head: e.target.value })}
-                                        placeholder="Name of department head"
-                                    />
-                                </div>
+                                    <div>
+                                        <label>Department Head</label>
+                                        <input
+                                            type="text"
+                                            className="input"
+                                            value={formData.department_head}
+                                            onChange={(e) => setFormData({ ...formData, department_head: e.target.value })}
+                                            placeholder="Name of department head"
+                                        />
+                                    </div>
 
-                                <div>
-                                    <label>Status</label>
-                                    <select
-                                        className="input"
-                                        value={formData.status}
-                                        onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                                    >
-                                        <option value="active">Active</option>
-                                        <option value="inactive">Inactive</option>
-                                    </select>
-                                </div>
-                            </div>
-
+                                    <div>
+                                        <label>Status</label>
+                                        <select
+                                            className="input"
+                                            value={formData.status}
+                                            onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                                        >
+                                            <option value="active">Active</option>
+                                            <option value="inactive">Inactive</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </form>
                         </div>
@@ -289,10 +287,10 @@ export default function DepartmentManagement() {
                                 {editingDept ? 'Update' : 'Create'} Department
                             </button>
                         </div>
-                    </div>
+                    </div >
                 </div >
             )
-}
+            }
         </div >
     );
 }

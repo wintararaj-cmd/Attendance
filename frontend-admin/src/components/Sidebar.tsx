@@ -1,7 +1,7 @@
 import { LayoutDashboard, Users, UserPlus, Banknote, FileText, Building2, LogOut, Fingerprint } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 
-const NAV_ITEMS = [
+const NAV_ITEMS: Array<{ section: string; items: Array<{ to: string; icon: any; label: string; exact?: boolean }> }> = [
   {
     section: 'Overview',
     items: [
