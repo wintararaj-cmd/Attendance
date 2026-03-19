@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Calendar, Clock, Download, Filter, Search, RefreshCw, X, FileText } from 'lucide-react';
+import { Calendar, Clock, Download, Filter, Search, RefreshCw, X, FileText, Edit2 } from 'lucide-react';
 
 interface AttendanceLog {
     id: string;
@@ -34,6 +34,16 @@ export default function AttendanceLogs() {
     const [syncing, setSyncing] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [successMsg, setSuccessMsg] = useState<string | null>(null);
+    const [editingLog, setEditingLog] = useState<AttendanceLog | null>(null);
+    const [editForm, setEditForm] = useState({
+        check_in: '',
+        check_out: '',
+        status: '',
+        ot_hours: 0,
+        ot_weekend_hours: 0,
+        ot_holiday_hours: 0
+    });
+    const [savingEdit, setSavingEdit] = useState(false);
 
     useEffect(() => { fetchLogs(); }, []);
 
@@ -103,6 +113,53 @@ export default function AttendanceLogs() {
             alert('Error: ' + (err.response?.data?.detail || err.message));
         } finally {
             setSyncing(false);
+        }
+    };
+
+    const handleOpenEdit = (log: AttendanceLog) => {
+        setEditingLog(log);
+        setEditForm({
+            check_in: log.check_in || '',
+            check_out: log.check_out || '',
+            status: log.status || 'present',
+            ot_hours: log.ot_hours || 0,
+            ot_weekend_hours: log.ot_weekend_hours || 0,
+            ot_holiday_hours: log.ot_holiday_hours || 0
+        });
+    };
+
+    const handleSaveEdit = async () => {
+        if (!editingLog) return;
+        try {
+            setSavingEdit(true);
+            const updateData: any = {};
+            if (editForm.check_in !== (editingLog.check_in || '')) {
+                updateData.check_in = editForm.check_in || null;
+            }
+            if (editForm.check_out !== (editingLog.check_out || '')) {
+                updateData.check_out = editForm.check_out || null;
+            }
+            if (editForm.status !== editingLog.status) {
+                updateData.status = editForm.status;
+            }
+            if (editForm.ot_hours !== editingLog.ot_hours) {
+                updateData.ot_hours = editForm.ot_hours;
+            }
+            if (editForm.ot_weekend_hours !== editingLog.ot_weekend_hours) {
+                updateData.ot_weekend_hours = editForm.ot_weekend_hours;
+            }
+            if (editForm.ot_holiday_hours !== editingLog.ot_holiday_hours) {
+                updateData.ot_holiday_hours = editForm.ot_holiday_hours;
+            }
+            
+            await axios.put(`/api/v1/attendance/logs/${editingLog.id}`, updateData);
+            showSuccess('Attendance log updated successfully');
+            setEditingLog(null);
+            fetchLogs();
+        } catch (err: any) {
+            alert('Error: ' + (err.response?.data?.detail || err.message));
+        } finally {
+            setSavingEdit(false);
         }
     };
 
@@ -255,12 +312,13 @@ export default function AttendanceLogs() {
                                     <th>Hours</th>
                                     <th>OT</th>
                                     <th>Face Match</th>
+                                    <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {logs.length === 0 ? (
                                     <tr>
-                                        <td colSpan={8}>
+                                        <td colSpan={9}>
                                             <div className="empty-state">
                                                 <div className="empty-state-icon">
                                                     <FileText size={24} />
@@ -389,12 +447,138 @@ export default function AttendanceLogs() {
                                                         <span style={{ color: 'var(--text-faint)' }}>—</span>
                                                     )}
                                                 </td>
+                                                <td>
+                                                    <button
+                                                        className="btn btn-ghost"
+                                                        style={{ padding: '0.375rem' }}
+                                                        onClick={() => handleOpenEdit(log)}
+                                                        title="Edit"
+                                                    >
+                                                        <Edit2 size={14} />
+                                                    </button>
+                                                </td>
                                             </tr>
                                         );
                                     })
                                 )}
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Modal */}
+            {editingLog && (
+                <div className="modal-overlay" onClick={() => setEditingLog(null)}>
+                    <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '450px' }}>
+                        <div className="modal-header">
+                            <h3>Edit Attendance</h3>
+                            <button className="btn btn-ghost" onClick={() => setEditingLog(null)}>
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className="modal-body">
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.375rem' }}>
+                                    Employee
+                                </label>
+                                <div style={{ fontWeight: 500 }}>{editingLog.employee_name}</div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{editingLog.date}</div>
+                            </div>
+                            
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.375rem' }}>
+                                        Check In (HH:MM AM/PM)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        className="input"
+                                        value={editForm.check_in}
+                                        onChange={(e) => setEditForm({ ...editForm, check_in: e.target.value })}
+                                        placeholder="e.g., 09:00 AM"
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.375rem' }}>
+                                        Check Out (HH:MM AM/PM)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        className="input"
+                                        value={editForm.check_out}
+                                        onChange={(e) => setEditForm({ ...editForm, check_out: e.target.value })}
+                                        placeholder="e.g., 06:00 PM"
+                                    />
+                                </div>
+                            </div>
+                            
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.375rem' }}>
+                                    Status
+                                </label>
+                                <select
+                                    className="input"
+                                    value={editForm.status}
+                                    onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+                                >
+                                    <option value="present">Present</option>
+                                    <option value="absent">Absent</option>
+                                    <option value="late">Late</option>
+                                    <option value="half_day">Half Day</option>
+                                </select>
+                            </div>
+                            
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.375rem' }}>
+                                        OT Hours
+                                    </label>
+                                    <input
+                                        type="number"
+                                        className="input"
+                                        value={editForm.ot_hours}
+                                        onChange={(e) => setEditForm({ ...editForm, ot_hours: Number(e.target.value) })}
+                                        min="0"
+                                        step="0.5"
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.375rem' }}>
+                                        OT Weekend
+                                    </label>
+                                    <input
+                                        type="number"
+                                        className="input"
+                                        value={editForm.ot_weekend_hours}
+                                        onChange={(e) => setEditForm({ ...editForm, ot_weekend_hours: Number(e.target.value) })}
+                                        min="0"
+                                        step="0.5"
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.375rem' }}>
+                                        OT Holiday
+                                    </label>
+                                    <input
+                                        type="number"
+                                        className="input"
+                                        value={editForm.ot_holiday_hours}
+                                        onChange={(e) => setEditForm({ ...editForm, ot_holiday_hours: Number(e.target.value) })}
+                                        min="0"
+                                        step="0.5"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-ghost" onClick={() => setEditingLog(null)}>
+                                Cancel
+                            </button>
+                            <button className="btn btn-primary" onClick={handleSaveEdit} disabled={savingEdit}>
+                                {savingEdit ? 'Saving...' : 'Save Changes'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

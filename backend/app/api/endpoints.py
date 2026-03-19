@@ -1549,6 +1549,72 @@ def get_attendance_logs(
     
     return {"logs": result}
 
+@router.put("/attendance/logs/{log_id}")
+def update_attendance_log(
+    log_id: str,
+    update_data: dict,
+    db: Session = Depends(get_db),
+    current_user: AdminUser = Depends(get_current_user)
+):
+    """Update an attendance log"""
+    log = db.query(AttendanceLog).filter(AttendanceLog.id == log_id).first()
+    if not log:
+        raise HTTPException(status_code=404, detail="Attendance log not found")
+    
+    # Update allowed fields
+    if "check_in" in update_data and update_data["check_in"] is not None:
+        from datetime import datetime
+        # Parse time string (HH:MM AM/PM format)
+        try:
+            time_str = update_data["check_in"]
+            # Parse the time
+            log.check_in = datetime.strptime(f"{log.date} {time_str}", "%Y-%m-%d %I:%M %p")
+        except ValueError:
+            log.check_in = None
+    elif "check_in" in update_data and update_data["check_in"] is None:
+        log.check_in = None
+    
+    if "check_out" in update_data and update_data["check_out"] is not None:
+        from datetime import datetime
+        try:
+            time_str = update_data["check_out"]
+            log.check_out = datetime.strptime(f"{log.date} {time_str}", "%Y-%m-%d %I:%M %p")
+        except ValueError:
+            log.check_out = None
+    elif "check_out" in update_data and update_data["check_out"] is None:
+        log.check_out = None
+    
+    if "status" in update_data:
+        log.status = update_data["status"]
+    
+    if "ot_hours" in update_data:
+        log.ot_hours = update_data["ot_hours"]
+    
+    if "ot_weekend_hours" in update_data:
+        log.ot_weekend_hours = update_data["ot_weekend_hours"]
+    
+    if "ot_holiday_hours" in update_data:
+        log.ot_holiday_hours = update_data["ot_holiday_hours"]
+    
+    # Recalculate total hours if check_in or check_out changed
+    if "check_in" in update_data or "check_out" in update_data:
+        if log.check_in and log.check_out:
+            from datetime import timedelta
+            duration = log.check_out - log.check_in
+            # Subtract 30 minutes for break
+            total_minutes = duration.total_seconds() / 60 - 30
+            if total_minutes > 0:
+                log.total_hours_worked = round(total_minutes / 60, 2)
+            else:
+                log.total_hours_worked = 0
+        else:
+            log.total_hours_worked = 0
+    
+    db.commit()
+    db.refresh(log)
+    
+    return {"message": "Attendance log updated successfully", "log_id": log.id}
+
 @router.get("/attendance/export")
 def export_attendance_logs(
     start_date: Optional[str] = None,
