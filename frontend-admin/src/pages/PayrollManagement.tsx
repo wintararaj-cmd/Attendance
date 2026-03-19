@@ -1302,9 +1302,41 @@ export default function PayrollManagement() {
                                                     <span>HRA</span>
                                                     <span style={{ fontWeight: 500 }}>₹{(selectedPayroll.payroll?.earnings?.hra || 0).toLocaleString('en-IN')}</span>
                                                 </div>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                                    <span>Conveyance</span>
+                                                    <span style={{ fontWeight: 500 }}>₹{(selectedPayroll.payroll?.earnings?.conveyance || 0).toLocaleString('en-IN')}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                                    <span>Medical</span>
+                                                    <span style={{ fontWeight: 500 }}>₹{(selectedPayroll.payroll?.earnings?.medical || 0).toLocaleString('en-IN')}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                                                     <span>Special Allowance</span>
                                                     <span style={{ fontWeight: 500 }}>₹{(selectedPayroll.payroll?.earnings?.special || 0).toLocaleString('en-IN')}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                                    <span>Education</span>
+                                                    <span style={{ fontWeight: 500 }}>₹{(selectedPayroll.payroll?.earnings?.education || 0).toLocaleString('en-IN')}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                                    <span>Washing Allowance</span>
+                                                    <span style={{ fontWeight: 500 }}>₹{(selectedPayroll.payroll?.earnings?.washing || 0).toLocaleString('en-IN')}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                                    <span>Casting Allowance</span>
+                                                    <span style={{ fontWeight: 500 }}>₹{(selectedPayroll.payroll?.earnings?.casting || 0).toLocaleString('en-IN')}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                                    <span>TTB Allowance</span>
+                                                    <span style={{ fontWeight: 500 }}>₹{(selectedPayroll.payroll?.earnings?.ttb || 0).toLocaleString('en-IN')}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                                    <span>Plating Allowance</span>
+                                                    <span style={{ fontWeight: 500 }}>₹{(selectedPayroll.payroll?.earnings?.plating || 0).toLocaleString('en-IN')}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                                                    <span>Other Allowances</span>
+                                                    <span style={{ fontWeight: 500 }}>₹{(selectedPayroll.payroll?.earnings?.other || 0).toLocaleString('en-IN')}</span>
                                                 </div>
                                             </>
                                         )}
