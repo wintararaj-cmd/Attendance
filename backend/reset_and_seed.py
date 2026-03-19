@@ -141,7 +141,10 @@ def reset_and_seed():
                      "is_hourly_based": False,
                      "ot_rate_multiplier": 2.0,
                      "is_pf_applicable": True,
-                     "washing_allowance": 20
+                     "washing_allowance": 20,
+                     "casting_allowance": 50,
+                     "ttb_allowance": 30,
+                     "plating_allowance": 40
                 }
             }
         ]
@@ -193,8 +196,8 @@ def reset_and_seed():
         today = datetime.date.today()
         # Seed for last 15 days
         
-        for i in range(15):
-            curr_date = today - datetime.timedelta(days=14-i) # 14 days ago to today
+        for i in range(30):
+            curr_date = today - datetime.timedelta(days=29-i) # 30 days ago to today
             
             if curr_date.weekday() == 6: # Skip Sunday
                 continue
