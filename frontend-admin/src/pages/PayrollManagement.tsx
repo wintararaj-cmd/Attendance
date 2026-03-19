@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Calculator, Download, X, Settings, DollarSign, Users, TrendingUp, Filter, Search, Eye, Save } from 'lucide-react';
+import { Calculator, Download, X, Settings, DollarSign, Users, TrendingUp, Filter, Search, Eye, Save, Sliders, RotateCcw } from 'lucide-react';
 
 interface Employee {
     id: string;
@@ -29,6 +29,10 @@ interface PayrollData {
             medical: number;
             education: number;
             other: number;
+            washing: number;
+            casting: number;
+            ttb: number;
+            plating: number;
             bonus: number;
             incentive: number;
             overtime_regular: number;
@@ -76,6 +80,10 @@ interface SalaryStructure {
     special_allowance: number;
     education_allowance: number;
     other_allowance: number;
+    washing_allowance: number;
+    casting_allowance: number;
+    ttb_allowance: number;
+    plating_allowance: number;
     // Deductions
     pf_employee: number;
     pf_employer: number;
@@ -96,6 +104,36 @@ interface SalaryStructure {
     ot_rate_multiplier: number;
     ot_weekend_multiplier: number;
     ot_holiday_multiplier: number;
+}
+
+interface PayrollRules {
+    id?: number;
+    employee_id?: string;
+    // Attendance Allowance Rules
+    allowance_full_days: number;
+    allowance_half_days: number;
+    allowance_full_multiplier: number;
+    allowance_half_multiplier: number;
+    // PF Rules
+    pf_employee_rate: number;
+    pf_employer_rate: number;
+    pf_wage_ceiling: number;
+    // ESI Rules
+    esi_employee_rate: number;
+    esi_employer_rate: number;
+    esi_wage_ceiling: number;
+    // Overtime Rules
+    standard_working_hours: number;
+    ot_weekday_multiplier: number;
+    ot_weekend_multiplier: number;
+    ot_holiday_multiplier: number;
+    // Professional Tax Rules
+    pt_threshold: number;
+    pt_amount: number;
+    // Welfare Fund
+    welfare_rate: number;
+    // Notes
+    notes?: string;
 }
 
 export default function PayrollManagement() {
@@ -131,6 +169,10 @@ export default function PayrollManagement() {
         special_allowance: 0,
         education_allowance: 0,
         other_allowance: 0,
+        washing_allowance: 0,
+        casting_allowance: 0,
+        ttb_allowance: 0,
+        plating_allowance: 0,
         pf_employee: 0,
         pf_employer: 0,
         esi_employee: 0,
@@ -148,6 +190,32 @@ export default function PayrollManagement() {
         ot_weekend_multiplier: 2.0,
         ot_holiday_multiplier: 2.5
     });
+
+    // Payroll Rules Modal State
+    const [showRulesModal, setShowRulesModal] = useState(false);
+    const [rulesEmpId, setRulesEmpId] = useState<string | null>(null);
+    const [rulesEmpName, setRulesEmpName] = useState('');
+    const [rulesForm, setRulesForm] = useState<PayrollRules>({
+        allowance_full_days: 21,
+        allowance_half_days: 15,
+        allowance_full_multiplier: 100.0,
+        allowance_half_multiplier: 50.0,
+        pf_employee_rate: 12.0,
+        pf_employer_rate: 12.0,
+        pf_wage_ceiling: 15000,
+        esi_employee_rate: 0.75,
+        esi_employer_rate: 3.25,
+        esi_wage_ceiling: 21000,
+        standard_working_hours: 8,
+        ot_weekday_multiplier: 1.5,
+        ot_weekend_multiplier: 2.0,
+        ot_holiday_multiplier: 2.5,
+        pt_threshold: 10000,
+        pt_amount: 200,
+        welfare_rate: 3.0,
+        notes: ''
+    });
+    const [hasCustomRules, setHasCustomRules] = useState(false);
 
     useEffect(() => {
         fetchEmployees();
@@ -268,6 +336,10 @@ export default function PayrollManagement() {
                 special_allowance: 0,
                 education_allowance: 0,
                 other_allowance: 0,
+                washing_allowance: 0,
+                casting_allowance: 0,
+                ttb_allowance: 0,
+                plating_allowance: 0,
                 pf_employee: 0,
                 pf_employer: 0,
                 esi_employee: 0,
@@ -297,6 +369,78 @@ export default function PayrollManagement() {
             setShowConfigModal(false);
         } catch (err) {
             alert("Failed to save salary.");
+        }
+    };
+
+    // Payroll Rules Handlers
+    const defaultRules: PayrollRules = {
+        allowance_full_days: 21,
+        allowance_half_days: 15,
+        allowance_full_multiplier: 100.0,
+        allowance_half_multiplier: 50.0,
+        pf_employee_rate: 12.0,
+        pf_employer_rate: 12.0,
+        pf_wage_ceiling: 15000,
+        esi_employee_rate: 0.75,
+        esi_employer_rate: 3.25,
+        esi_wage_ceiling: 21000,
+        standard_working_hours: 8,
+        ot_weekday_multiplier: 1.5,
+        ot_weekend_multiplier: 2.0,
+        ot_holiday_multiplier: 2.5,
+        pt_threshold: 10000,
+        pt_amount: 200,
+        welfare_rate: 3.0,
+        notes: ''
+    };
+
+    const handleOpenRules = async (empId: string, empName: string) => {
+        setRulesEmpId(empId);
+        setRulesEmpName(empName);
+        try {
+            const res = await axios.get(`/api/v1/employees/${empId}/payroll-rules`);
+            setRulesForm(res.data);
+            setHasCustomRules(true);
+            setShowRulesModal(true);
+        } catch (err: any) {
+            if (err.response?.status === 404) {
+                // No custom rules, use defaults
+                const defaultsRes = await axios.get('/api/v1/payroll-rules/defaults');
+                setRulesForm(defaultsRes.data);
+                setHasCustomRules(false);
+                setShowRulesModal(true);
+            } else {
+                console.error(err);
+                setRulesForm(defaultRules);
+                setHasCustomRules(false);
+                setShowRulesModal(true);
+            }
+        }
+    };
+
+    const handleSaveRules = async () => {
+        if (!rulesEmpId) return;
+        try {
+            await axios.post(`/api/v1/employees/${rulesEmpId}/payroll-rules`, rulesForm);
+            alert("Payroll rules saved successfully!");
+            setHasCustomRules(true);
+            setShowRulesModal(false);
+        } catch (err) {
+            alert("Failed to save payroll rules.");
+        }
+    };
+
+    const handleResetRules = async () => {
+        if (!rulesEmpId) return;
+        if (!confirm("Reset payroll rules to system defaults?")) return;
+        try {
+            await axios.post(`/api/v1/employees/${rulesEmpId}/payroll-rules/reset`);
+            const defaultsRes = await axios.get('/api/v1/payroll-rules/defaults');
+            setRulesForm(defaultsRes.data);
+            setHasCustomRules(false);
+            alert("Rules reset to defaults.");
+        } catch (err) {
+            alert("Failed to reset rules.");
         }
     };
 
@@ -534,28 +678,39 @@ export default function PayrollManagement() {
                                             </td>
                                             <td>{emp.department || '-'}</td>
                                             <td>
-                                                <button
-                                                    className="btn"
-                                                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', padding: '0.4rem 0.6rem', background: '#f3f4f6' }}
-                                                    onClick={() => handleOpenConfig(emp.id, `${emp.first_name} ${emp.last_name || ''}`)}
-                                                >
-                                                    <Settings size={14} /> Configure
-                                                </button>
-                                                <button
-                                                    className="btn"
-                                                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', padding: '0.4rem 0.6rem', background: '#dbeafe', color: '#1e40af', opacity: processingId === emp.id ? 0.7 : 1 }}
-                                                    onClick={() => handleRunPayroll(emp.id)}
-                                                    disabled={processingId === emp.id}
-                                                    title="Preview Payroll"
-                                                >
-                                                    {processingId === emp.id ? (
-                                                        <span>...</span>
-                                                    ) : (
-                                                        <>
-                                                            <Eye size={14} /> Preview
-                                                        </>
-                                                    )}
-                                                </button>
+                                                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                                    <button
+                                                        className="btn"
+                                                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', padding: '0.4rem 0.6rem', background: '#f3f4f6' }}
+                                                        onClick={() => handleOpenConfig(emp.id, `${emp.first_name} ${emp.last_name || ''}`)}
+                                                        title="Configure Salary Structure"
+                                                    >
+                                                        <Settings size={14} /> Salary
+                                                    </button>
+                                                    <button
+                                                        className="btn"
+                                                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', padding: '0.4rem 0.6rem', background: '#fef3c7', color: '#92400e' }}
+                                                        onClick={() => handleOpenRules(emp.id, `${emp.first_name} ${emp.last_name || ''}`)}
+                                                        title="Customize Payroll Rules"
+                                                    >
+                                                        <Sliders size={14} /> Rules
+                                                    </button>
+                                                    <button
+                                                        className="btn"
+                                                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', padding: '0.4rem 0.6rem', background: '#dbeafe', color: '#1e40af', opacity: processingId === emp.id ? 0.7 : 1 }}
+                                                        onClick={() => handleRunPayroll(emp.id)}
+                                                        disabled={processingId === emp.id}
+                                                        title="Preview Payroll"
+                                                    >
+                                                        {processingId === emp.id ? (
+                                                            <span>...</span>
+                                                        ) : (
+                                                            <>
+                                                                <Eye size={14} /> Preview
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))
@@ -819,6 +974,46 @@ export default function PayrollManagement() {
                                                 placeholder="e.g., 500"
                                             />
                                         </div>
+                                        <div>
+                                            <label style={labelStyle}>Washing {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'}</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={salaryForm.washing_allowance}
+                                                onChange={e => setSalaryForm({ ...salaryForm, washing_allowance: Number(e.target.value) })}
+                                                placeholder="e.g., 500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Casting {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'}</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={salaryForm.casting_allowance}
+                                                onChange={e => setSalaryForm({ ...salaryForm, casting_allowance: Number(e.target.value) })}
+                                                placeholder="e.g., 1000"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>TTB {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'}</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={salaryForm.ttb_allowance}
+                                                onChange={e => setSalaryForm({ ...salaryForm, ttb_allowance: Number(e.target.value) })}
+                                                placeholder="e.g., 1000"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Plating {salaryForm.is_hourly_based ? '(Per Day)' : '(Monthly)'}</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={salaryForm.plating_allowance}
+                                                onChange={e => setSalaryForm({ ...salaryForm, plating_allowance: Number(e.target.value) })}
+                                                placeholder="e.g., 1000"
+                                            />
+                                        </div>
                                     </div>
 
                                     {salaryForm.is_hourly_based && (
@@ -832,7 +1027,11 @@ export default function PayrollManagement() {
                                                     (salaryForm.medical_allowance || 0) +
                                                     (salaryForm.special_allowance || 0) +
                                                     (salaryForm.education_allowance || 0) +
-                                                    (salaryForm.other_allowance || 0)
+                                                    (salaryForm.other_allowance || 0) +
+                                                    (salaryForm.washing_allowance || 0) +
+                                                    (salaryForm.casting_allowance || 0) +
+                                                    (salaryForm.ttb_allowance || 0) +
+                                                    (salaryForm.plating_allowance || 0)
                                                 ).toFixed(2)}
                                             </span>
                                         </div>
@@ -984,7 +1183,11 @@ export default function PayrollManagement() {
                                                 salaryForm.medical_allowance +
                                                 salaryForm.special_allowance +
                                                 salaryForm.education_allowance +
-                                                salaryForm.other_allowance
+                                                salaryForm.other_allowance +
+                                                salaryForm.washing_allowance +
+                                                salaryForm.casting_allowance +
+                                                salaryForm.ttb_allowance +
+                                                salaryForm.plating_allowance
                                             ).toLocaleString('en-IN')}
                                         </span>
                                     </div>
@@ -1016,6 +1219,10 @@ export default function PayrollManagement() {
                                                 salaryForm.special_allowance +
                                                 salaryForm.education_allowance +
                                                 salaryForm.other_allowance +
+                                                salaryForm.washing_allowance +
+                                                salaryForm.casting_allowance +
+                                                salaryForm.ttb_allowance +
+                                                salaryForm.plating_allowance +
                                                 salaryForm.bonus +
                                                 salaryForm.incentive -
                                                 salaryForm.pf_employee -
@@ -1206,6 +1413,309 @@ export default function PayrollManagement() {
                                 onClick={handleDownloadPdf}
                             >
                                 <Download size={16} /> Download PDF
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Payroll Rules Modal */}
+            {showRulesModal && (
+                <div className="modal-overlay">
+                    <div className="modal" style={{ maxWidth: '700px' }}>
+                        <div className="modal-header">
+                            <div>
+                                <h3 className="modal-title">Customize Payroll Rules</h3>
+                                <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                                    {rulesEmpName} {hasCustomRules && <span style={{ color: '#059669', fontWeight: 500 }}>(Custom Rules Active)</span>}
+                                </p>
+                            </div>
+                            <button className="modal-close" onClick={() => setShowRulesModal(false)}>
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div className="modal-body">
+                            <div style={{ display: 'grid', gap: '1.5rem' }}>
+                                {/* Attendance Allowance Rules */}
+                                <div>
+                                    <h4 style={{ margin: '0 0 1rem 0', color: '#7c3aed', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <TrendingUp size={18} />
+                                        Attendance Allowance Rules
+                                    </h4>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                        <div>
+                                            <label style={labelStyle}>Full Allowance Days</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={rulesForm.allowance_full_days}
+                                                onChange={e => setRulesForm({ ...rulesForm, allowance_full_days: Number(e.target.value) })}
+                                                placeholder="21"
+                                            />
+                                            <span style={{ fontSize: '0.75rem', color: '#666' }}>Days for 100% allowance</span>
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Half Allowance Days</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={rulesForm.allowance_half_days}
+                                                onChange={e => setRulesForm({ ...rulesForm, allowance_half_days: Number(e.target.value) })}
+                                                placeholder="15"
+                                            />
+                                            <span style={{ fontSize: '0.75rem', color: '#666' }}>Days for 50% allowance</span>
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Full Multiplier (%)</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                step="0.1"
+                                                value={rulesForm.allowance_full_multiplier}
+                                                onChange={e => setRulesForm({ ...rulesForm, allowance_full_multiplier: Number(e.target.value) })}
+                                                placeholder="100"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Half Multiplier (%)</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                step="0.1"
+                                                value={rulesForm.allowance_half_multiplier}
+                                                onChange={e => setRulesForm({ ...rulesForm, allowance_half_multiplier: Number(e.target.value) })}
+                                                placeholder="50"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* PF Rules */}
+                                <div>
+                                    <h4 style={{ margin: '0 0 1rem 0', color: '#2563eb', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <DollarSign size={18} />
+                                        Provident Fund (PF) Rules
+                                    </h4>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+                                        <div>
+                                            <label style={labelStyle}>Employee Rate (%)</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                step="0.1"
+                                                value={rulesForm.pf_employee_rate}
+                                                onChange={e => setRulesForm({ ...rulesForm, pf_employee_rate: Number(e.target.value) })}
+                                                placeholder="12"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Employer Rate (%)</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                step="0.1"
+                                                value={rulesForm.pf_employer_rate}
+                                                onChange={e => setRulesForm({ ...rulesForm, pf_employer_rate: Number(e.target.value) })}
+                                                placeholder="12"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Wage Ceiling (₹)</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={rulesForm.pf_wage_ceiling}
+                                                onChange={e => setRulesForm({ ...rulesForm, pf_wage_ceiling: Number(e.target.value) })}
+                                                placeholder="15000"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* ESI Rules */}
+                                <div>
+                                    <h4 style={{ margin: '0 0 1rem 0', color: '#dc2626', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <Users size={18} />
+                                        ESI Rules
+                                    </h4>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+                                        <div>
+                                            <label style={labelStyle}>Employee Rate (%)</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                step="0.01"
+                                                value={rulesForm.esi_employee_rate}
+                                                onChange={e => setRulesForm({ ...rulesForm, esi_employee_rate: Number(e.target.value) })}
+                                                placeholder="0.75"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Employer Rate (%)</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                step="0.01"
+                                                value={rulesForm.esi_employer_rate}
+                                                onChange={e => setRulesForm({ ...rulesForm, esi_employer_rate: Number(e.target.value) })}
+                                                placeholder="3.25"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Wage Ceiling (₹)</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={rulesForm.esi_wage_ceiling}
+                                                onChange={e => setRulesForm({ ...rulesForm, esi_wage_ceiling: Number(e.target.value) })}
+                                                placeholder="21000"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Overtime Rules */}
+                                <div>
+                                    <h4 style={{ margin: '0 0 1rem 0', color: '#059669', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <Settings size={18} />
+                                        Overtime Rules
+                                    </h4>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1rem' }}>
+                                        <div>
+                                            <label style={labelStyle}>Standard Hours/Day</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                step="0.5"
+                                                value={rulesForm.standard_working_hours}
+                                                onChange={e => setRulesForm({ ...rulesForm, standard_working_hours: Number(e.target.value) })}
+                                                placeholder="8"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Weekday OT (x)</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                step="0.1"
+                                                value={rulesForm.ot_weekday_multiplier}
+                                                onChange={e => setRulesForm({ ...rulesForm, ot_weekday_multiplier: Number(e.target.value) })}
+                                                placeholder="1.5"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Weekend OT (x)</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                step="0.1"
+                                                value={rulesForm.ot_weekend_multiplier}
+                                                onChange={e => setRulesForm({ ...rulesForm, ot_weekend_multiplier: Number(e.target.value) })}
+                                                placeholder="2.0"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Holiday OT (x)</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                step="0.1"
+                                                value={rulesForm.ot_holiday_multiplier}
+                                                onChange={e => setRulesForm({ ...rulesForm, ot_holiday_multiplier: Number(e.target.value) })}
+                                                placeholder="2.5"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Professional Tax & Welfare */}
+                                <div>
+                                    <h4 style={{ margin: '0 0 1rem 0', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <Calculator size={18} />
+                                        Professional Tax & Welfare
+                                    </h4>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+                                        <div>
+                                            <label style={labelStyle}>PT Threshold (₹)</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={rulesForm.pt_threshold}
+                                                onChange={e => setRulesForm({ ...rulesForm, pt_threshold: Number(e.target.value) })}
+                                                placeholder="10000"
+                                            />
+                                            <span style={{ fontSize: '0.75rem', color: '#666' }}>Salary above this triggers PT</span>
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>PT Amount (₹)</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={rulesForm.pt_amount}
+                                                onChange={e => setRulesForm({ ...rulesForm, pt_amount: Number(e.target.value) })}
+                                                placeholder="200"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Welfare Rate (%)</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                step="0.1"
+                                                value={rulesForm.welfare_rate}
+                                                onChange={e => setRulesForm({ ...rulesForm, welfare_rate: Number(e.target.value) })}
+                                                placeholder="3.0"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Notes */}
+                                <div>
+                                    <label style={labelStyle}>Notes (Optional)</label>
+                                    <textarea
+                                        className="input"
+                                        rows={2}
+                                        value={rulesForm.notes || ''}
+                                        onChange={e => setRulesForm({ ...rulesForm, notes: e.target.value })}
+                                        placeholder="Any special notes for this employee's payroll rules..."
+                                    />
+                                </div>
+
+                                {/* Info Box */}
+                                <div style={{
+                                    padding: '1rem',
+                                    background: '#f0f9ff',
+                                    borderRadius: '8px',
+                                    border: '1px solid #bae6fd',
+                                    fontSize: '0.875rem',
+                                    color: '#0369a1'
+                                }}>
+                                    <strong>Note:</strong> These custom rules override the system defaults for this employee only.
+                                    If no custom rules are set, the system defaults will be used automatically.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="modal-footer">
+                            <button className="btn btn-ghost" onClick={() => setShowRulesModal(false)}>
+                                Cancel
+                            </button>
+                            {hasCustomRules && (
+                                <button
+                                    className="btn"
+                                    style={{ background: '#fef3c7', color: '#92400e', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                                    onClick={handleResetRules}
+                                >
+                                    <RotateCcw size={16} /> Reset to Defaults
+                                </button>
+                            )}
+                            <button
+                                className="btn btn-primary"
+                                onClick={handleSaveRules}
+                            >
+                                Save Custom Rules
                             </button>
                         </div>
                     </div>

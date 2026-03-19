@@ -99,6 +99,7 @@ def check_salary_schema(db: Session = Depends(get_db)):
     required_columns = [
         'basic_salary', 'hra', 'conveyance_allowance', 'medical_allowance',
         'special_allowance', 'education_allowance', 'other_allowance',
+        'washing_allowance', 'casting_allowance', 'ttb_allowance', 'plating_allowance',
         'pf_employee', 'pf_employer', 'esi_employee', 'esi_employer',
         'professional_tax', 'tds', 'bonus', 'incentive',
         'is_pf_applicable', 'is_esi_applicable'
@@ -148,6 +149,10 @@ def fix_salary_schema(db: Session = Depends(get_db)):
             'medical_allowance': 'NUMERIC(12, 2) DEFAULT 0.0',
             'education_allowance': 'NUMERIC(12, 2) DEFAULT 0.0',
             'other_allowance': 'NUMERIC(12, 2) DEFAULT 0.0',
+            'washing_allowance': 'NUMERIC(12, 2) DEFAULT 0.0',
+            'casting_allowance': 'NUMERIC(12, 2) DEFAULT 0.0',
+            'ttb_allowance': 'NUMERIC(12, 2) DEFAULT 0.0',
+            'plating_allowance': 'NUMERIC(12, 2) DEFAULT 0.0',
             'pf_employee': 'NUMERIC(12, 2) DEFAULT 0.0',
             'pf_employer': 'NUMERIC(12, 2) DEFAULT 0.0',
             'esi_employee': 'NUMERIC(12, 2) DEFAULT 0.0',
@@ -935,10 +940,38 @@ def generate_payroll(
             # Convert SQLAlchemy model to dict for service
             structure_dict = {c.name: getattr(emp.salary_structure, c.name) for c in emp.salary_structure.__table__.columns}
             
+            # Fetch custom payroll rules for employee if exists
+            custom_rules = None
+            from ..models.models import EmployeePayrollRules
+            emp_rules = db.query(EmployeePayrollRules).filter(EmployeePayrollRules.employee_id == emp.id).first()
+            if emp_rules:
+                custom_rules = {
+                    "allowance_full_days": emp_rules.allowance_full_days,
+                    "allowance_half_days": emp_rules.allowance_half_days,
+                    "allowance_full_multiplier": float(emp_rules.allowance_full_multiplier),
+                    "allowance_half_multiplier": float(emp_rules.allowance_half_multiplier),
+                    "allowance_none_multiplier": float(emp_rules.allowance_none_multiplier),
+                    "standard_working_hours": float(emp_rules.standard_working_hours),
+                    "ot_rate_multiplier": float(emp_rules.ot_rate_multiplier),
+                    "ot_weekend_multiplier": float(emp_rules.ot_weekend_multiplier),
+                    "ot_holiday_multiplier": float(emp_rules.ot_holiday_multiplier),
+                    "pf_employee_rate": float(emp_rules.pf_employee_rate),
+                    "pf_employer_rate": float(emp_rules.pf_employer_rate),
+                    "pf_wage_ceiling": float(emp_rules.pf_wage_ceiling),
+                    "esi_employee_rate": float(emp_rules.esi_employee_rate),
+                    "esi_employer_rate": float(emp_rules.esi_employer_rate),
+                    "esi_wage_ceiling": float(emp_rules.esi_wage_ceiling),
+                    "pt_threshold": float(emp_rules.pt_threshold),
+                    "pt_amount": float(emp_rules.pt_amount),
+                    "welfare_deduction": float(emp_rules.welfare_deduction),
+                    "staff_month_days": emp_rules.staff_month_days
+                }
+            
             result = payroll_service.calculate_net_salary(
                 structure_dict, 
                 attendance_summary, 
-                employee_type=emp.employee_type or "full_time"
+                employee_type=emp.employee_type or "full_time",
+                custom_rules=custom_rules
             )
             
             if "error" in result:
@@ -978,7 +1011,7 @@ def generate_payroll(
             # Mapping result back to model columns
             # Note: payroll_service returns generic structure, model has specific columns
             # We map best effort or update service to match model strictly?
-            # Service returns: basic, hra, conveyance, washing, education, other
+            # Service returns: basic, hra, conveyance, washing, education, other, casting, ttb, plating
             earnings = payroll_data["earnings"]
             deductions = payroll_data["deductions"]
             
@@ -986,6 +1019,11 @@ def generate_payroll(
             payroll_record.hra_earned = earnings.get("hra", 0)
             payroll_record.conveyance_earned = earnings.get("conveyance", 0)
             payroll_record.washing_allowance = earnings.get("washing", 0)
+            
+            # Save new allowance fields
+            payroll_record.casting_allowance = earnings.get("casting", 0)
+            payroll_record.ttb_allowance = earnings.get("ttb", 0)
+            payroll_record.plating_allowance = earnings.get("plating", 0)
             
             # Group other allowances into the single column 'other_allowances'
             # Include: Medical, Special, Education, Other, Bonus, Incentive
@@ -1104,10 +1142,38 @@ def generate_single_payroll(
     # 4. Calculate Salary
     structure_dict = {c.name: getattr(emp.salary_structure, c.name) for c in emp.salary_structure.__table__.columns}
     
+    # Fetch custom payroll rules for employee if exists
+    custom_rules = None
+    from ..models.models import EmployeePayrollRules
+    emp_rules = db.query(EmployeePayrollRules).filter(EmployeePayrollRules.employee_id == emp.id).first()
+    if emp_rules:
+        custom_rules = {
+            "allowance_full_days": emp_rules.allowance_full_days,
+            "allowance_half_days": emp_rules.allowance_half_days,
+            "allowance_full_multiplier": float(emp_rules.allowance_full_multiplier),
+            "allowance_half_multiplier": float(emp_rules.allowance_half_multiplier),
+            "allowance_none_multiplier": float(emp_rules.allowance_none_multiplier),
+            "standard_working_hours": float(emp_rules.standard_working_hours),
+            "ot_rate_multiplier": float(emp_rules.ot_rate_multiplier),
+            "ot_weekend_multiplier": float(emp_rules.ot_weekend_multiplier),
+            "ot_holiday_multiplier": float(emp_rules.ot_holiday_multiplier),
+            "pf_employee_rate": float(emp_rules.pf_employee_rate),
+            "pf_employer_rate": float(emp_rules.pf_employer_rate),
+            "pf_wage_ceiling": float(emp_rules.pf_wage_ceiling),
+            "esi_employee_rate": float(emp_rules.esi_employee_rate),
+            "esi_employer_rate": float(emp_rules.esi_employer_rate),
+            "esi_wage_ceiling": float(emp_rules.esi_wage_ceiling),
+            "pt_threshold": float(emp_rules.pt_threshold),
+            "pt_amount": float(emp_rules.pt_amount),
+            "welfare_deduction": float(emp_rules.welfare_deduction),
+            "staff_month_days": emp_rules.staff_month_days
+        }
+    
     result = payroll_service.calculate_net_salary(
         structure_dict, 
         attendance_summary, 
-        employee_type=emp.employee_type or "full_time"
+        employee_type=emp.employee_type or "full_time",
+        custom_rules=custom_rules
     )
     
     if "error" in result:
@@ -1146,6 +1212,11 @@ def generate_single_payroll(
     payroll_record.hra_earned = earnings.get("hra", 0)
     payroll_record.conveyance_earned = earnings.get("conveyance", 0)
     payroll_record.washing_allowance = earnings.get("washing", 0)
+    
+    # Save new allowance fields
+    payroll_record.casting_allowance = earnings.get("casting", 0)
+    payroll_record.ttb_allowance = earnings.get("ttb", 0)
+    payroll_record.plating_allowance = earnings.get("plating", 0)
     
     other_total = (
         earnings.get("medical", 0) +
@@ -1216,11 +1287,14 @@ def get_payrolls(
         "hra_earned": float(p.hra_earned) if p.hra_earned else 0,
         "conveyance_earned": float(p.conveyance_earned) if p.conveyance_earned else 0,
         "washing_allowance": float(p.washing_allowance) if p.washing_allowance else 0,
+        "casting_allowance": float(p.casting_allowance) if p.casting_allowance else 0,
+        "ttb_allowance": float(p.ttb_allowance) if p.ttb_allowance else 0,
+        "plating_allowance": float(p.plating_allowance) if p.plating_allowance else 0,
         "other_allowances": float(p.other_allowances) if p.other_allowances else 0,
         "gross_salary": float(p.gross_salary),
         
         # Derived for display if needed
-        "ot_amount": float(p.gross_salary) - (float(p.basic_earned) + float(p.hra_earned or 0) + float(p.conveyance_earned or 0) + float(p.washing_allowance or 0) + float(p.other_allowances or 0)), # Approx if OT not stored explicitly as amount
+        "ot_amount": float(p.gross_salary) - (float(p.basic_earned) + float(p.hra_earned or 0) + float(p.conveyance_earned or 0) + float(p.washing_allowance or 0) + float(p.casting_allowance or 0) + float(p.ttb_allowance or 0) + float(p.plating_allowance or 0) + float(p.other_allowances or 0)), # Approx if OT not stored explicitly as amount
                 
         # Deductions
         "pf_amount": float(p.pf_amount) if p.pf_amount else 0,
@@ -1261,6 +1335,10 @@ def get_employee_payroll(
             "special_allowance": 0,
             "education_allowance": 0,
             "other_allowance": 0,
+            "washing_allowance": 0,
+            "casting_allowance": 0,
+            "ttb_allowance": 0,
+            "plating_allowance": 0,
             "bonus": 0,
             "incentive": 0,
             "is_pf_applicable": True,
@@ -1281,6 +1359,10 @@ def get_employee_payroll(
             "special_allowance": float(sal.special_allowance) if sal.special_allowance else 0,
             "education_allowance": float(sal.education_allowance) if sal.education_allowance else 0,
             "other_allowance": float(sal.other_allowance) if sal.other_allowance else 0,
+            "washing_allowance": float(sal.washing_allowance) if sal.washing_allowance else 0,
+            "casting_allowance": float(sal.casting_allowance) if sal.casting_allowance else 0,
+            "ttb_allowance": float(sal.ttb_allowance) if sal.ttb_allowance else 0,
+            "plating_allowance": float(sal.plating_allowance) if sal.plating_allowance else 0,
             "bonus": float(sal.bonus) if sal.bonus else 0,
             "incentive": float(sal.incentive) if sal.incentive else 0,
             "tds": float(sal.tds) if sal.tds else 0,
@@ -1576,6 +1658,10 @@ def get_employee_salary_struct(emp_id: str, db: Session = Depends(get_db)):
             "special_allowance": 0,
             "education_allowance": 0,
             "other_allowance": 0,
+            "washing_allowance": 0,
+            "casting_allowance": 0,
+            "ttb_allowance": 0,
+            "plating_allowance": 0,
             "pf_employee": 0,
             "pf_employer": 0,
             "esi_employee": 0,
@@ -1602,6 +1688,10 @@ def get_employee_salary_struct(emp_id: str, db: Session = Depends(get_db)):
         "special_allowance": float(sal.special_allowance) if sal.special_allowance else 0,
         "education_allowance": float(sal.education_allowance) if sal.education_allowance else 0,
         "other_allowance": float(sal.other_allowance) if sal.other_allowance else 0,
+        "washing_allowance": float(sal.washing_allowance) if sal.washing_allowance else 0,
+        "casting_allowance": float(sal.casting_allowance) if sal.casting_allowance else 0,
+        "ttb_allowance": float(sal.ttb_allowance) if sal.ttb_allowance else 0,
+        "plating_allowance": float(sal.plating_allowance) if sal.plating_allowance else 0,
         "pf_employee": float(sal.pf_employee) if sal.pf_employee else 0,
         "pf_employer": float(sal.pf_employer) if sal.pf_employer else 0,
         "esi_employee": float(sal.esi_employee) if sal.esi_employee else 0,
@@ -1647,6 +1737,10 @@ def update_employee_salary(
         sal.special_allowance = data.get("special_allowance", 0)
         sal.education_allowance = data.get("education_allowance", 0)
         sal.other_allowance = data.get("other_allowance", 0)
+        sal.washing_allowance = data.get("washing_allowance", 0)
+        sal.casting_allowance = data.get("casting_allowance", 0)
+        sal.ttb_allowance = data.get("ttb_allowance", 0)
+        sal.plating_allowance = data.get("plating_allowance", 0)
         
         sal.pf_employee = data.get("pf_employee", 0)
         sal.pf_employer = data.get("pf_employer", 0)
@@ -1807,8 +1901,11 @@ def download_payslip_pdf(
                 "HRA": float(payroll_record.hra_earned or 0),
                 "Conveyance": float(payroll_record.conveyance_earned or 0),
                 "Washing Allowance": float(payroll_record.washing_allowance or 0),
+                "Casting Allowance": float(payroll_record.casting_allowance or 0),
+                "TTB Allowance": float(payroll_record.ttb_allowance or 0),
+                "Plating Allowance": float(payroll_record.plating_allowance or 0),
                 "Other Allowances": float(payroll_record.other_allowances or 0), # Grouped in DB
-                "Overtime": float(payroll_record.gross_salary) - (float(payroll_record.basic_earned) + float(payroll_record.hra_earned or 0) + float(payroll_record.conveyance_earned or 0) + float(payroll_record.washing_allowance or 0) + float(payroll_record.other_allowances or 0)), # Derive OT roughly or store it?
+                "Overtime": float(payroll_record.gross_salary) - (float(payroll_record.basic_earned) + float(payroll_record.hra_earned or 0) + float(payroll_record.conveyance_earned or 0) + float(payroll_record.washing_allowance or 0) + float(payroll_record.casting_allowance or 0) + float(payroll_record.ttb_allowance or 0) + float(payroll_record.plating_allowance or 0) + float(payroll_record.other_allowances or 0)), # Derive OT roughly or store it?
                 # improved derivation: Gross - (Sum of known earnings)
             },
             "deductions": {
@@ -2360,6 +2457,236 @@ def recalculate_hours(
         db.rollback()
         import traceback
         logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== EMPLOYEE PAYROLL RULES ====================
+
+from ..models.models import EmployeePayrollRules
+from ..services.payroll import DEFAULT_PAYROLL_RULES
+
+@router.get("/payroll-rules/defaults")
+def get_default_payroll_rules(current_user: AdminUser = Depends(get_current_user)):
+    """Get the default payroll rules applied when no custom rules exist"""
+    return {
+        "status": "success",
+        "defaults": DEFAULT_PAYROLL_RULES
+    }
+
+
+@router.get("/employees/{emp_id}/payroll-rules")
+def get_employee_payroll_rules(emp_id: str, db: Session = Depends(get_db), current_user: AdminUser = Depends(get_current_user)):
+    """Get custom payroll rules for a specific employee"""
+    try:
+        employee = db.query(Employee).filter(Employee.id == emp_id).first()
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        
+        rules = db.query(EmployeePayrollRules).filter(EmployeePayrollRules.employee_id == emp_id).first()
+        
+        if not rules:
+            return {
+                "status": "success",
+                "employee_id": emp_id,
+                "employee_name": f"{employee.first_name} {employee.last_name}",
+                "has_custom_rules": False,
+                "rules": None,
+                "defaults": DEFAULT_PAYROLL_RULES
+            }
+        
+        return {
+            "status": "success",
+            "employee_id": emp_id,
+            "employee_name": f"{employee.first_name} {employee.last_name}",
+            "has_custom_rules": True,
+            "rules": {
+                "id": rules.id,
+                "allowance_full_days": rules.allowance_full_days,
+                "allowance_half_days": rules.allowance_half_days,
+                "allowance_full_multiplier": float(rules.allowance_full_multiplier),
+                "allowance_half_multiplier": float(rules.allowance_half_multiplier),
+                "allowance_none_multiplier": float(rules.allowance_none_multiplier),
+                "standard_working_hours": float(rules.standard_working_hours),
+                "ot_rate_multiplier": float(rules.ot_rate_multiplier),
+                "ot_weekend_multiplier": float(rules.ot_weekend_multiplier),
+                "ot_holiday_multiplier": float(rules.ot_holiday_multiplier),
+                "pf_employee_rate": float(rules.pf_employee_rate),
+                "pf_employer_rate": float(rules.pf_employer_rate),
+                "pf_wage_ceiling": float(rules.pf_wage_ceiling),
+                "esi_employee_rate": float(rules.esi_employee_rate),
+                "esi_employer_rate": float(rules.esi_employer_rate),
+                "esi_wage_ceiling": float(rules.esi_wage_ceiling),
+                "pt_threshold": float(rules.pt_threshold),
+                "pt_amount": float(rules.pt_amount),
+                "welfare_deduction": float(rules.welfare_deduction),
+                "staff_month_days": rules.staff_month_days,
+                "created_at": rules.created_at.isoformat() if rules.created_at else None,
+                "updated_at": rules.updated_at.isoformat() if rules.updated_at else None
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching payroll rules: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/employees/{emp_id}/payroll-rules")
+def upsert_employee_payroll_rules(
+    emp_id: str, 
+    rules_data: dict = Body(...),
+    db: Session = Depends(get_db), 
+    current_user: AdminUser = Depends(get_current_user)
+):
+    """Create or update custom payroll rules for an employee"""
+    try:
+        employee = db.query(Employee).filter(Employee.id == emp_id).first()
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        
+        # Check if rules already exist
+        existing_rules = db.query(EmployeePayrollRules).filter(EmployeePayrollRules.employee_id == emp_id).first()
+        
+        if existing_rules:
+            # Update existing rules
+            for key, value in rules_data.items():
+                if hasattr(existing_rules, key) and key not in ['id', 'employee_id', 'created_at']:
+                    setattr(existing_rules, key, value)
+            existing_rules.updated_at = datetime.datetime.now(timezone.utc)
+            rules = existing_rules
+        else:
+            # Create new rules
+            rules = EmployeePayrollRules(
+                employee_id=emp_id,
+                **{k: v for k, v in rules_data.items() if hasattr(EmployeePayrollRules, k) and k not in ['id', 'created_at', 'updated_at']}
+            )
+            db.add(rules)
+        
+        db.commit()
+        db.refresh(rules)
+        
+        logger.info(f"Updated payroll rules for employee {emp_id}")
+        
+        return {
+            "status": "success",
+            "message": "Payroll rules updated successfully",
+            "employee_id": emp_id,
+            "rules": {
+                "id": rules.id,
+                "allowance_full_days": rules.allowance_full_days,
+                "allowance_half_days": rules.allowance_half_days,
+                "allowance_full_multiplier": float(rules.allowance_full_multiplier),
+                "allowance_half_multiplier": float(rules.allowance_half_multiplier),
+                "allowance_none_multiplier": float(rules.allowance_none_multiplier),
+                "standard_working_hours": float(rules.standard_working_hours),
+                "ot_rate_multiplier": float(rules.ot_rate_multiplier),
+                "ot_weekend_multiplier": float(rules.ot_weekend_multiplier),
+                "ot_holiday_multiplier": float(rules.ot_holiday_multiplier),
+                "pf_employee_rate": float(rules.pf_employee_rate),
+                "pf_employer_rate": float(rules.pf_employer_rate),
+                "pf_wage_ceiling": float(rules.pf_wage_ceiling),
+                "esi_employee_rate": float(rules.esi_employee_rate),
+                "esi_employer_rate": float(rules.esi_employer_rate),
+                "esi_wage_ceiling": float(rules.esi_wage_ceiling),
+                "pt_threshold": float(rules.pt_threshold),
+                "pt_amount": float(rules.pt_amount),
+                "welfare_deduction": float(rules.welfare_deduction),
+                "staff_month_days": rules.staff_month_days
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating payroll rules: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/employees/{emp_id}/payroll-rules")
+def delete_employee_payroll_rules(emp_id: str, db: Session = Depends(get_db), current_user: AdminUser = Depends(get_current_user)):
+    """Delete custom payroll rules for an employee (revert to defaults)"""
+    try:
+        employee = db.query(Employee).filter(Employee.id == emp_id).first()
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        
+        rules = db.query(EmployeePayrollRules).filter(EmployeePayrollRules.employee_id == emp_id).first()
+        
+        if not rules:
+            return {
+                "status": "success",
+                "message": "No custom rules to delete",
+                "employee_id": emp_id
+            }
+        
+        db.delete(rules)
+        db.commit()
+        
+        logger.info(f"Deleted custom payroll rules for employee {emp_id}")
+        
+        return {
+            "status": "success",
+            "message": "Custom payroll rules deleted. Employee will use default rules.",
+            "employee_id": emp_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting payroll rules: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/employees/{emp_id}/payroll-rules/reset")
+def reset_employee_payroll_rules(emp_id: str, db: Session = Depends(get_db), current_user: AdminUser = Depends(get_current_user)):
+    """Reset employee payroll rules to default values (creates default rules entry)"""
+    try:
+        employee = db.query(Employee).filter(Employee.id == emp_id).first()
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        
+        # Delete existing custom rules
+        existing_rules = db.query(EmployeePayrollRules).filter(EmployeePayrollRules.employee_id == emp_id).first()
+        if existing_rules:
+            db.delete(existing_rules)
+        
+        # Create new rules with default values
+        new_rules = EmployeePayrollRules(
+            employee_id=emp_id,
+            allowance_full_days=DEFAULT_PAYROLL_RULES['allowance_full_days'],
+            allowance_half_days=DEFAULT_PAYROLL_RULES['allowance_half_days'],
+            allowance_full_multiplier=DEFAULT_PAYROLL_RULES['allowance_full_multiplier'],
+            allowance_half_multiplier=DEFAULT_PAYROLL_RULES['allowance_half_multiplier'],
+            allowance_none_multiplier=DEFAULT_PAYROLL_RULES['allowance_none_multiplier'],
+            standard_working_hours=DEFAULT_PAYROLL_RULES['standard_working_hours'],
+            ot_rate_multiplier=DEFAULT_PAYROLL_RULES['ot_rate_multiplier'],
+            ot_weekend_multiplier=DEFAULT_PAYROLL_RULES['ot_weekend_multiplier'],
+            ot_holiday_multiplier=DEFAULT_PAYROLL_RULES['ot_holiday_multiplier'],
+            pf_employee_rate=DEFAULT_PAYROLL_RULES['pf_employee_rate'],
+            pf_employer_rate=DEFAULT_PAYROLL_RULES['pf_employer_rate'],
+            pf_wage_ceiling=DEFAULT_PAYROLL_RULES['pf_wage_ceiling'],
+            esi_employee_rate=DEFAULT_PAYROLL_RULES['esi_employee_rate'],
+            esi_employer_rate=DEFAULT_PAYROLL_RULES['esi_employer_rate'],
+            esi_wage_ceiling=DEFAULT_PAYROLL_RULES['esi_wage_ceiling'],
+            pt_threshold=DEFAULT_PAYROLL_RULES['pt_threshold'],
+            pt_amount=DEFAULT_PAYROLL_RULES['pt_amount'],
+            welfare_deduction=DEFAULT_PAYROLL_RULES['welfare_deduction'],
+            staff_month_days=DEFAULT_PAYROLL_RULES['staff_month_days']
+        )
+        db.add(new_rules)
+        db.commit()
+        db.refresh(new_rules)
+        
+        return {
+            "status": "success",
+            "message": "Payroll rules reset to defaults",
+            "employee_id": emp_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error resetting payroll rules: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

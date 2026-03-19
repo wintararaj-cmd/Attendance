@@ -122,6 +122,9 @@ class SalaryStructure(Base):
     education_allowance = Column(Numeric(12, 2), default=0.0)
     other_allowance = Column(Numeric(12, 2), default=0.0)
     washing_allowance = Column(Numeric(12, 2), default=0.0)
+    casting_allowance = Column(Numeric(12, 2), default=0.0)  # Casting allowance
+    ttb_allowance = Column(Numeric(12, 2), default=0.0)  # TTB allowance
+    plating_allowance = Column(Numeric(12, 2), default=0.0)  # Plating allowance
     
     # Deductions
     pf_employee = Column(Numeric(12, 2), default=0.0)  # Employee PF Contribution
@@ -174,6 +177,9 @@ class Payroll(Base):
     conveyance_earned = Column(Numeric(12, 2), default=0.0)
     washing_allowance = Column(Numeric(12, 2), default=0.0)
     other_allowances = Column(Numeric(12, 2), default=0.0)
+    casting_allowance = Column(Numeric(12, 2), default=0.0)  # Casting allowance earned
+    ttb_allowance = Column(Numeric(12, 2), default=0.0)  # TTB allowance earned
+    plating_allowance = Column(Numeric(12, 2), default=0.0)  # Plating allowance earned
     
     gross_salary = Column(Numeric(12, 2), default=0.0)
     
@@ -192,6 +198,58 @@ class Payroll(Base):
     
     employee = relationship("Employee")
 
+class EmployeePayrollRules(Base):
+    """Customizable payroll rules per employee - overrides global defaults"""
+    __tablename__ = "employee_payroll_rules"
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    employee_id = Column(String, ForeignKey("employees.id"), unique=True)
+    
+    # Attendance-based Allowance Rules (thresholds for multiplier)
+    # Days required for full allowance (default 21)
+    allowance_full_days = Column(Integer, default=21)
+    # Days required for half allowance (default 15)
+    allowance_half_days = Column(Integer, default=15)
+    # Multiplier values (as percentages: 100 = 100%, 50 = 50%)
+    allowance_full_multiplier = Column(Numeric(5, 2), default=100.0)
+    allowance_half_multiplier = Column(Numeric(5, 2), default=50.0)
+    allowance_none_multiplier = Column(Numeric(5, 2), default=0.0)
+    
+    # Overtime Rules
+    # Standard working hours per day (for OT calculation)
+    standard_working_hours = Column(Numeric(5, 2), default=8.0)
+    # OT rate multipliers (can override SalaryStructure defaults)
+    ot_rate_multiplier = Column(Numeric(5, 2), default=1.5)  # Weekday OT
+    ot_weekend_multiplier = Column(Numeric(5, 2), default=2.0)  # Weekend OT
+    ot_holiday_multiplier = Column(Numeric(5, 2), default=2.5)  # Holiday OT
+    
+    # PF (Provident Fund) Rules
+    pf_employee_rate = Column(Numeric(5, 2), default=12.0)  # 12% employee contribution
+    pf_employer_rate = Column(Numeric(5, 2), default=12.0)  # 12% employer contribution
+    pf_wage_ceiling = Column(Numeric(12, 2), default=15000.0)  # Max wage for PF calculation
+    
+    # ESI (Employee State Insurance) Rules
+    esi_employee_rate = Column(Numeric(5, 2), default=0.75)  # 0.75% employee contribution
+    esi_employer_rate = Column(Numeric(5, 2), default=3.25)  # 3.25% employer contribution
+    esi_wage_ceiling = Column(Numeric(12, 2), default=21000.0)  # Max gross salary for ESI
+    
+    # Professional Tax Rules
+    pt_threshold = Column(Numeric(12, 2), default=10000.0)  # Salary threshold for PT
+    pt_amount = Column(Numeric(12, 2), default=200.0)  # Default PT amount
+    
+    # Welfare Fund Rules
+    welfare_deduction = Column(Numeric(12, 2), default=3.0)  # Default welfare deduction
+    
+    # Staff-specific: Days in month for calculation (default 30)
+    staff_month_days = Column(Integer, default=30)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    employee = relationship("Employee", back_populates="payroll_rules")
+
+
 # Update Employee relationship
 Employee.salary_structure = relationship("SalaryStructure", uselist=False, back_populates="employee")
+Employee.payroll_rules = relationship("EmployeePayrollRules", uselist=False, back_populates="employee")
 

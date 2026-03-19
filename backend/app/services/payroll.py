@@ -1,7 +1,34 @@
 from decimal import Decimal
+import math
+
+def math_ceil(val):
+    return Decimal(math.ceil(val))
+
+# Default global rules (used when employee has no custom rules)
+DEFAULT_PAYROLL_RULES = {
+    "allowance_full_days": 21,
+    "allowance_half_days": 15,
+    "allowance_full_multiplier": 100.0,
+    "allowance_half_multiplier": 50.0,
+    "allowance_none_multiplier": 0.0,
+    "standard_working_hours": 8.0,
+    "ot_rate_multiplier": 1.5,
+    "ot_weekend_multiplier": 2.0,
+    "ot_holiday_multiplier": 2.5,
+    "pf_employee_rate": 12.0,
+    "pf_employer_rate": 12.0,
+    "pf_wage_ceiling": 15000.0,
+    "esi_employee_rate": 0.75,
+    "esi_employer_rate": 3.25,
+    "esi_wage_ceiling": 21000.0,
+    "pt_threshold": 10000.0,
+    "pt_amount": 200.0,
+    "welfare_deduction": 3.0,
+    "staff_month_days": 30,
+}
 
 class PayrollService:
-    def calculate_net_salary(self, salary_structure: dict, attendance_summary: dict, employee_type: str = "full_time") -> dict:
+    def calculate_net_salary(self, salary_structure: dict, attendance_summary: dict, employee_type: str = "full_time", custom_rules: dict = None) -> dict:
         """
         Calculate comprehensive payroll based on Employee Type (Worker vs Staff).
         
@@ -17,6 +44,38 @@ class PayrollService:
         """
         
         try:
+            # --- 0. Merge Custom Rules with Defaults ---
+            rules = {**DEFAULT_PAYROLL_RULES}
+            if custom_rules:
+                rules.update(custom_rules)
+            
+            # Extract rule values
+            allowance_full_days = int(rules.get("allowance_full_days", 21))
+            allowance_half_days = int(rules.get("allowance_half_days", 15))
+            allowance_full_mult = Decimal(str(rules.get("allowance_full_multiplier", 100.0))) / Decimal(100)
+            allowance_half_mult = Decimal(str(rules.get("allowance_half_multiplier", 50.0))) / Decimal(100)
+            allowance_none_mult = Decimal(str(rules.get("allowance_none_multiplier", 0.0))) / Decimal(100)
+            standard_working_hours = Decimal(str(rules.get("standard_working_hours", 8.0)))
+            
+            # OT multipliers from rules (can be overridden by salary_structure)
+            default_ot_mult = Decimal(str(rules.get("ot_rate_multiplier", 1.5)))
+            default_ot_weekend_mult = Decimal(str(rules.get("ot_weekend_multiplier", 2.0)))
+            default_ot_holiday_mult = Decimal(str(rules.get("ot_holiday_multiplier", 2.5)))
+            
+            # PF/ESI rates from rules
+            pf_employee_rate = Decimal(str(rules.get("pf_employee_rate", 12.0))) / Decimal(100)
+            pf_employer_rate = Decimal(str(rules.get("pf_employer_rate", 12.0))) / Decimal(100)
+            pf_wage_ceiling = Decimal(str(rules.get("pf_wage_ceiling", 15000.0)))
+            esi_employee_rate = Decimal(str(rules.get("esi_employee_rate", 0.75))) / Decimal(100)
+            esi_employer_rate = Decimal(str(rules.get("esi_employer_rate", 3.25))) / Decimal(100)
+            esi_wage_ceiling = Decimal(str(rules.get("esi_wage_ceiling", 21000.0)))
+            
+            # PT and Welfare from rules
+            pt_threshold = Decimal(str(rules.get("pt_threshold", 10000.0)))
+            pt_amount = Decimal(str(rules.get("pt_amount", 200.0)))
+            welfare_default = Decimal(str(rules.get("welfare_deduction", 3.0)))
+            staff_month_days = int(rules.get("staff_month_days", 30))
+            
             # --- 1. Extract Components ---
             
             # Common Components
@@ -26,6 +85,11 @@ class PayrollService:
             washing = Decimal(str(salary_structure.get("washing_allowance", 0)))
             education = Decimal(str(salary_structure.get("education_allowance", 0)))
             other_allowance = Decimal(str(salary_structure.get("other_allowance", 0)))
+            
+            # Additional Allowances (Casting, TTB, Plating)
+            casting = Decimal(str(salary_structure.get("casting_allowance", 0)))
+            ttb = Decimal(str(salary_structure.get("ttb_allowance", 0)))
+            plating = Decimal(str(salary_structure.get("plating_allowance", 0)))
             
             # Additional Benefits
             bonus = Decimal(str(salary_structure.get("bonus", 0)))
@@ -40,6 +104,17 @@ class PayrollService:
             ot_hours = Decimal(str(attendance_summary.get("ot_hours", 0)))
             ot_weekend_hours = Decimal(str(attendance_summary.get("ot_weekend_hours", 0)))
             ot_holiday_hours = Decimal(str(attendance_summary.get("ot_holiday_hours", 0)))
+            
+            # --- Attendance-Based Allowance Multiplier (using custom thresholds) ---
+            def get_allowance_multiplier(worked_days):
+                if worked_days >= allowance_full_days:
+                    return allowance_full_mult  # Full allowance
+                elif worked_days >= allowance_half_days:
+                    return allowance_half_mult  # Half allowance
+                else:
+                    return allowance_none_mult  # No allowance
+            
+            allowance_multiplier = get_allowance_multiplier(worked_days)
             
             is_worker = salary_structure.get("is_hourly_based", False) or employee_type in ["worker", "daily_wage"]
             
@@ -58,19 +133,32 @@ class PayrollService:
             if is_worker:
                 # --- WORKER LOGIC (Daily Based) ---
                 # All components are considered "Per Day"
-                daily_total_rate = basic + hra + conveyance + washing + education + other_allowance
+                # Apply attendance-based allowance multiplier to allowances
+                hra_adjusted = hra * allowance_multiplier
+                conveyance_adjusted = conveyance * allowance_multiplier
+                washing_adjusted = washing * allowance_multiplier
+                education_adjusted = education * allowance_multiplier
+                other_adjusted = other_allowance * allowance_multiplier
+                casting_adjusted = casting * allowance_multiplier
+                ttb_adjusted = ttb * allowance_multiplier
+                plating_adjusted = plating * allowance_multiplier
+                
+                daily_total_rate = basic + hra_adjusted + conveyance_adjusted + washing_adjusted + education_adjusted + other_adjusted + casting_adjusted + ttb_adjusted + plating_adjusted
                 
                 # Wages = Daily Total * Working Days
                 wages = daily_total_rate * worked_days
                 
-                # OT Calculation: (Daily Total / 8) * OT Hours
-                ot_rate_per_hour = daily_total_rate / Decimal(8)
+                # OT Calculation: (Daily Total / standard_working_hours) * OT Hours
+                ot_rate_per_hour = daily_total_rate / standard_working_hours
                 
-                ot_rate_multiplier = Decimal(str(salary_structure.get("ot_rate_multiplier", 1.0)))
+                # Use salary_structure multiplier if provided, else use custom rules default
+                ot_rate_multiplier = Decimal(str(salary_structure.get("ot_rate_multiplier", default_ot_mult)))
+                ot_weekend_mult = Decimal(str(salary_structure.get("ot_weekend_multiplier", default_ot_weekend_mult)))
+                ot_holiday_mult = Decimal(str(salary_structure.get("ot_holiday_multiplier", default_ot_holiday_mult)))
                 
                 ot_pay_regular = ot_rate_per_hour * ot_rate_multiplier * ot_hours
-                ot_pay_weekend = (daily_total_rate / Decimal(8)) * Decimal(str(salary_structure.get("ot_weekend_multiplier", 2.0))) * ot_weekend_hours
-                ot_pay_holiday = (daily_total_rate / Decimal(8)) * Decimal(str(salary_structure.get("ot_holiday_multiplier", 2.0))) * ot_holiday_hours
+                ot_pay_weekend = (daily_total_rate / standard_working_hours) * ot_weekend_mult * ot_weekend_hours
+                ot_pay_holiday = (daily_total_rate / standard_working_hours) * ot_holiday_mult * ot_holiday_hours
                 
                 total_ot_pay = ot_pay_regular + ot_pay_weekend + ot_pay_holiday
                 
@@ -82,7 +170,17 @@ class PayrollService:
             else:
                 # --- STAFF LOGIC (Monthly Based) ---
                 # Components are Monthly Fixed
-                monthly_gross_components = basic + hra + conveyance + washing + education + other_allowance
+                # Apply attendance-based allowance multiplier to allowances
+                hra_adjusted = hra * allowance_multiplier
+                conveyance_adjusted = conveyance * allowance_multiplier
+                washing_adjusted = washing * allowance_multiplier
+                education_adjusted = education * allowance_multiplier
+                other_adjusted = other_allowance * allowance_multiplier
+                casting_adjusted = casting * allowance_multiplier
+                ttb_adjusted = ttb * allowance_multiplier
+                plating_adjusted = plating * allowance_multiplier
+                
+                monthly_gross_components = basic + hra_adjusted + conveyance_adjusted + washing_adjusted + education_adjusted + other_adjusted + casting_adjusted + ttb_adjusted + plating_adjusted
                 
                 # Wages equivalent (Gross - LOP)
                 # Recalculate LOP logic based on latest rigorous requirements? 
@@ -97,15 +195,16 @@ class PayrollService:
                 
                 wages = monthly_gross_components - lop_deduction
                 
-                # OT for Staff (if applicable)
+                # OT for Staff (if applicable) - using custom rules
                 if ot_hours > 0 or ot_weekend_hours > 0 or ot_holiday_hours > 0:
-                     ot_base_rate = basic / Decimal(240) # 30 days * 8 hours
-                     ot_multiplier = Decimal(str(salary_structure.get("ot_rate_multiplier", 1.5)))
+                     # Staff OT base rate: basic / (staff_month_days * standard_working_hours)
+                     ot_base_rate = basic / (Decimal(staff_month_days) * standard_working_hours)
+                     ot_multiplier = Decimal(str(salary_structure.get("ot_rate_multiplier", default_ot_mult)))
                      
                      ot_pay_regular = ot_base_rate * ot_multiplier * ot_hours
-                     # Assuming multipliers for staff match worker or default
-                     ot_weekend_mult = Decimal(str(salary_structure.get("ot_weekend_multiplier", 2.0)))
-                     ot_holiday_mult = Decimal(str(salary_structure.get("ot_holiday_multiplier", 2.5)))
+                     # Use custom rule multipliers
+                     ot_weekend_mult = Decimal(str(salary_structure.get("ot_weekend_multiplier", default_ot_weekend_mult)))
+                     ot_holiday_mult = Decimal(str(salary_structure.get("ot_holiday_multiplier", default_ot_holiday_mult)))
                      
                      ot_pay_weekend = ot_base_rate * ot_weekend_mult * ot_weekend_hours
                      ot_pay_holiday = ot_base_rate * ot_holiday_mult * ot_holiday_hours
@@ -114,12 +213,7 @@ class PayrollService:
                 
                 gross_salary = wages + total_ot_pay + bonus + incentive
 
-            # --- 3. Deductions ---
-            
-            # ... (Deductions logic remains - PF, ESI, etc. needs no change usually) ...
-            # Re-implementing briefly to ensure variable scope or just assuming access? 
-            # We are inside the function, need to ensure we don't cut off logic.
-            # Copying deductions logic from previous read but ensuring indentation matches.
+            # --- 3. Deductions (using custom rules) ---
             
             pf_employee = Decimal(0)
             pf_employer = Decimal(0)
@@ -132,25 +226,29 @@ class PayrollService:
                     per_day_basic = basic / total_days_in_month if total_days_in_month > 0 else 0
                     earned_basic = per_day_basic * (total_days_in_month - unpaid_leaves)
                 
-                pf_base = min(earned_basic, Decimal(15000))
-                pf_employee = pf_base * Decimal(0.12)
-                pf_employer = pf_base * Decimal(0.12)
+                # Use custom PF ceiling and rates
+                pf_base = min(earned_basic, pf_wage_ceiling)
+                pf_employee = pf_base * pf_employee_rate
+                pf_employer = pf_base * pf_employer_rate
             
             esi_employee = Decimal(0)
             esi_employer = Decimal(0)
             is_esi_applicable = salary_structure.get("is_esi_applicable", False)
             
-            if is_esi_applicable or (gross_salary <= 21000 and gross_salary > 0):
-                esi_employee = math_ceil(gross_salary * Decimal(0.0075)) 
-                esi_employer = math_ceil(gross_salary * Decimal(0.0325))
+            # Use custom ESI ceiling and rates
+            if is_esi_applicable or (gross_salary <= esi_wage_ceiling and gross_salary > 0):
+                esi_employee = math_ceil(gross_salary * esi_employee_rate) 
+                esi_employer = math_ceil(gross_salary * esi_employer_rate)
             
+            # Use custom PT threshold and amount
             pt = Decimal(str(salary_structure.get("professional_tax", 0)))
-            if pt == 0 and gross_salary > 10000:
-                 pt = Decimal(200)
+            if pt == 0 and gross_salary > pt_threshold:
+                 pt = pt_amount
             
+            # Use custom welfare deduction
             welfare = Decimal(str(salary_structure.get("welfare_deduction", 0)))
             if welfare == 0 and employee_type in ['worker', 'staff']:
-                 welfare = Decimal(3)
+                 welfare = welfare_default
             
             tds = Decimal(str(salary_structure.get("tds", 0)))
             loan_deduction = Decimal(str(attendance_summary.get("loan_deduction", 0)))
@@ -161,19 +259,42 @@ class PayrollService:
             net_salary = gross_salary - total_deduction
             ctc = gross_salary + pf_employer + esi_employer
             
+            # Use adjusted allowances for output
+            if is_worker:
+                hra_display = hra_adjusted * worked_days
+                conveyance_display = conveyance_adjusted * worked_days
+                washing_display = washing_adjusted * worked_days
+                education_display = education_adjusted * worked_days
+                other_display = other_adjusted * worked_days
+                casting_display = casting_adjusted * worked_days
+                ttb_display = ttb_adjusted * worked_days
+                plating_display = plating_adjusted * worked_days
+            else:
+                hra_display = hra_adjusted
+                conveyance_display = conveyance_adjusted
+                washing_display = washing_adjusted
+                education_display = education_adjusted
+                other_display = other_adjusted
+                casting_display = casting_adjusted
+                ttb_display = ttb_adjusted
+                plating_display = plating_adjusted
+            
             return {
                 "payroll": {
                     "employee_type": "Worker" if is_worker else "Staff",
                     "earnings": {
                         "basic_earned": float(round(earned_basic if is_pf_applicable else (wages if not is_worker else wages), 2)),
                         "basic": float(round(earned_basic if is_pf_applicable else (wages if not is_worker else wages), 2)), # Alias for frontend
-                        "hra": float(round(hra if not is_worker else (hra * worked_days), 2)),
-                        "conveyance": float(round(conveyance if not is_worker else (conveyance * worked_days), 2)),
-                        "washing": float(round(washing if not is_worker else (washing * worked_days), 2)),
+                        "hra": float(round(hra_display, 2)),
+                        "conveyance": float(round(conveyance_display, 2)),
+                        "washing": float(round(washing_display, 2)),
                         "medical": float(round(salary_structure.get("medical_allowance", 0) if not is_worker else (Decimal(str(salary_structure.get("medical_allowance", 0))) * worked_days), 2)),
                         "special": float(round(salary_structure.get("special_allowance", 0) if not is_worker else (Decimal(str(salary_structure.get("special_allowance", 0))) * worked_days), 2)),
-                        "education": float(round(education if not is_worker else (education * worked_days), 2)),
-                        "other": float(round(other_allowance if not is_worker else (other_allowance * worked_days), 2)),
+                        "education": float(round(education_display, 2)),
+                        "other": float(round(other_display, 2)),
+                        "casting": float(round(casting_display, 2)),
+                        "ttb": float(round(ttb_display, 2)),
+                        "plating": float(round(plating_display, 2)),
                         
                         "daily_rate": float(round(daily_total_rate, 2)) if is_worker else None,
                         "wages_total": float(round(wages, 2)),
@@ -211,15 +332,28 @@ class PayrollService:
                         "working_days": float(worked_days),
                         "ot_hours": float(ot_hours),
                         "total_days_in_month": float(total_days_in_month),
-                        "paid_days": float(paid_days) if not is_worker else float(worked_days)
+                        "paid_days": float(paid_days) if not is_worker else float(worked_days),
+                        "allowance_multiplier": float(allowance_multiplier),
+                        "allowance_type": "full" if allowance_multiplier == allowance_full_mult else ("half" if allowance_multiplier == allowance_half_mult else "none"),
+                        "rules_applied": {
+                            "allowance_full_days": allowance_full_days,
+                            "allowance_half_days": allowance_half_days,
+                            "standard_working_hours": float(standard_working_hours),
+                            "pf_employee_rate_percent": float(pf_employee_rate * 100),
+                            "pf_employer_rate_percent": float(pf_employer_rate * 100),
+                            "pf_wage_ceiling": float(pf_wage_ceiling),
+                            "esi_employee_rate_percent": float(esi_employee_rate * 100),
+                            "esi_employer_rate_percent": float(esi_employer_rate * 100),
+                            "esi_wage_ceiling": float(esi_wage_ceiling),
+                            "pt_threshold": float(pt_threshold),
+                            "pt_amount": float(pt_amount),
+                            "welfare_deduction": float(welfare_default),
+                            "is_custom_rules": custom_rules is not None
+                        }
                     }
                 }
             }
         except Exception as e:
             return {"error": f"Calculation Error: {str(e)}"}
-
-def math_ceil(val):
-    import math
-    return Decimal(math.ceil(val))
 
 payroll_service = PayrollService()
