@@ -75,7 +75,7 @@ export default function LoanManagement() {
     const [employeeSearch, setEmployeeSearch] = useState('');
     const [showEmployeeDropdown, setShowEmployeeDropdown] = useState(false);
 
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+    const API_URL = import.meta.env.VITE_API_BASE_URL || 'https://api.t3sol.in';
 
     useEffect(() => {
         fetchLoans();
