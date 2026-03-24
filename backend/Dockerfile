@@ -53,7 +53,10 @@ RUN echo '#!/bin/bash\n\
     echo "[4.5/5] Seeding demo data..."\n\
     python reset_and_seed.py || echo "[WARN] Seeding had warnings..."\n\
     echo ""\n\
-    echo "[5/5] Starting application server..."\n\
+    echo "[5/5] Running loan/advance migration..."\n\
+    python run_loan_migration.py || echo "[WARN] Loan migration had warnings..."\n\
+    echo ""\n\
+    echo "[6/5] Starting application server..."\n\
     echo "============================================================"\n\
     exec uvicorn app.main:app --host 0.0.0.0 --port 8000\n\
     ' > /app/start.sh && chmod +x /app/start.sh

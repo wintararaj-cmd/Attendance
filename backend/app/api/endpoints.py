@@ -20,7 +20,7 @@ from ..services.payroll import payroll_service
 from ..services.auth import auth_service, SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 from ..core.database import get_db, engine
 from ..models import models
-from ..models.models import Employee, AttendanceLog, SalaryStructure, AdminUser, Department, Payroll, PayrollStatus
+from ..models.models import Employee, AttendanceLog, SalaryStructure, AdminUser, Department, Payroll, PayrollStatus, EmployeeLoan, LoanPayment
 from jose import JWTError, jwt
 
 
@@ -933,8 +933,47 @@ def generate_payroll(
                 "ot_weekend_hours": total_ot_weekend,
                 "ot_holiday_hours": total_ot_holiday,
                 "paid_days": paid_days, 
-                "loan_deduction": 0 # TODO: Fetch from loan table if exists
             }
+            
+            # 3b. Fetch Loan EMI Deductions for this employee and month
+            loan_deduction = 0
+            from ..models.models import EmployeeLoan, LoanPayment
+            active_loans = db.query(EmployeeLoan).filter(
+                EmployeeLoan.employee_id == emp.id,
+                EmployeeLoan.status == "active"
+            ).all()
+            
+            for loan in active_loans:
+                # Check if payment already recorded for this month/year
+                existing_payment = db.query(LoanPayment).filter(
+                    LoanPayment.loan_id == loan.id,
+                    LoanPayment.month == month,
+                    LoanPayment.year == year
+                ).first()
+                
+                if not existing_payment:
+                    # Add EMI to deduction and record payment
+                    loan_deduction += float(loan.emi_amount)
+                    
+                    # Record the payment
+                    payment = LoanPayment(
+                        loan_id=loan.id,
+                        employee_id=emp.id,
+                        payment_date=datetime.date.today(),
+                        amount=loan.emi_amount,
+                        month=month,
+                        year=year,
+                        status="paid"
+                    )
+                    db.add(payment)
+                    
+                    # Update remaining EMIs
+                    loan.remaining_emis = max(0, loan.remaining_emis - 1)
+                    if loan.remaining_emis == 0:
+                        loan.status = "completed"
+            
+            # Add loan_deduction to attendance_summary for payroll calculation
+            attendance_summary["loan_deduction"] = loan_deduction
             
             # 4. Calculate Salary
             # Convert SQLAlchemy model to dict for service
@@ -1136,8 +1175,47 @@ def generate_single_payroll(
         "ot_weekend_hours": total_ot_weekend,
         "ot_holiday_hours": total_ot_holiday,
         "paid_days": paid_days,
-        "loan_deduction": 0
     }
+    
+    # 3b. Fetch Loan EMI Deductions for this employee and month
+    loan_deduction = 0
+    from ..models.models import EmployeeLoan, LoanPayment
+    active_loans = db.query(EmployeeLoan).filter(
+        EmployeeLoan.employee_id == emp.id,
+        EmployeeLoan.status == "active"
+    ).all()
+    
+    for loan in active_loans:
+        # Check if payment already recorded for this month/year
+        existing_payment = db.query(LoanPayment).filter(
+            LoanPayment.loan_id == loan.id,
+            LoanPayment.month == month,
+            LoanPayment.year == year
+        ).first()
+        
+        if not existing_payment:
+            # Add EMI to deduction and record payment
+            loan_deduction += float(loan.emi_amount)
+            
+            # Record the payment
+            payment = LoanPayment(
+                loan_id=loan.id,
+                employee_id=emp.id,
+                payment_date=datetime.date.today(),
+                amount=loan.emi_amount,
+                month=month,
+                year=year,
+                status="paid"
+            )
+            db.add(payment)
+            
+            # Update remaining EMIs
+            loan.remaining_emis = max(0, loan.remaining_emis - 1)
+            if loan.remaining_emis == 0:
+                loan.status = "completed"
+    
+    # Add loan_deduction to attendance_summary
+    attendance_summary["loan_deduction"] = loan_deduction
     
     # 4. Calculate Salary
     structure_dict = {c.name: getattr(emp.salary_structure, c.name) for c in emp.salary_structure.__table__.columns}
@@ -2753,6 +2831,374 @@ def reset_employee_payroll_rules(emp_id: str, db: Session = Depends(get_db), cur
     except Exception as e:
         db.rollback()
         logger.error(f"Error resetting payroll rules: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===================== LOAN/ADVANCE MANAGEMENT ENDPOINTS =====================
+
+@router.get("/loans")
+def get_all_loans(
+    status: str = None,
+    db: Session = Depends(get_db),
+    current_user: AdminUser = Depends(get_current_user)
+):
+    """Get all employee loans/advances with optional status filter"""
+    try:
+        query = db.query(EmployeeLoan)
+        if status:
+            query = query.filter(EmployeeLoan.status == status)
+        
+        loans = query.order_by(EmployeeLoan.created_at.desc()).all()
+        
+        # Get employee details for each loan
+        result = []
+        for loan in loans:
+            employee = db.query(Employee).filter(Employee.id == loan.employee_id).first()
+            if employee:
+                result.append({
+                    "id": loan.id,
+                    "employee_id": loan.employee_id,
+                    "employee_name": f"{employee.first_name} {employee.last_name or ''}",
+                    "emp_code": employee.emp_code,
+                    "loan_type": loan.loan_type,
+                    "loan_amount": float(loan.loan_amount),
+                    "emi_amount": float(loan.emi_amount),
+                    "total_emis": loan.total_emis,
+                    "remaining_emis": loan.remaining_emis,
+                    "start_date": loan.start_date.isoformat() if loan.start_date else None,
+                    "end_date": loan.end_date.isoformat() if loan.end_date else None,
+                    "reason": loan.reason,
+                    "status": loan.status,
+                    "created_at": loan.created_at.isoformat() if loan.created_at else None
+                })
+        
+        return result
+    except Exception as e:
+        logger.error(f"Error fetching loans: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/employees/{emp_id}/loans")
+def get_employee_loans(
+    emp_id: str,
+    status: str = None,
+    db: Session = Depends(get_db),
+    current_user: AdminUser = Depends(get_current_user)
+):
+    """Get all loans for a specific employee"""
+    try:
+        employee = db.query(Employee).filter(Employee.id == emp_id).first()
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        
+        query = db.query(EmployeeLoan).filter(EmployeeLoan.employee_id == emp_id)
+        if status:
+            query = query.filter(EmployeeLoan.status == status)
+        
+        loans = query.order_by(EmployeeLoan.created_at.desc()).all()
+        
+        return [{
+            "id": loan.id,
+            "loan_type": loan.loan_type,
+            "loan_amount": float(loan.loan_amount),
+            "emi_amount": float(loan.emi_amount),
+            "total_emis": loan.total_emis,
+            "remaining_emis": loan.remaining_emis,
+            "start_date": loan.start_date.isoformat() if loan.start_date else None,
+            "end_date": loan.end_date.isoformat() if loan.end_date else None,
+            "reason": loan.reason,
+            "status": loan.status,
+            "created_at": loan.created_at.isoformat() if loan.created_at else None
+        } for loan in loans]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching employee loans: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/loans")
+def create_loan(
+    employee_id: str = Body(...),
+    loan_type: str = Body(...),  # 'loan' or 'advance'
+    loan_amount: float = Body(...),
+    emi_amount: float = Body(...),
+    total_emis: int = Body(default=1),
+    start_date: str = Body(...),  # ISO date string
+    reason: str = Body(default=None),
+    db: Session = Depends(get_db),
+    current_user: AdminUser = Depends(get_current_user)
+):
+    """Create a new loan/advance for an employee"""
+    try:
+        # Validate employee
+        employee = db.query(Employee).filter(Employee.id == employee_id).first()
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        
+        # Validate loan_type
+        if loan_type not in ['loan', 'advance']:
+            raise HTTPException(status_code=400, detail="loan_type must be 'loan' or 'advance'")
+        
+        # Parse dates
+        from datetime import datetime
+        start_date_obj = datetime.fromisoformat(start_date).date()
+        
+        # Calculate end date based on EMI duration
+        end_date_obj = None
+        if total_emis > 1:
+            # Add months to start date
+            months_to_add = total_emis
+            year = start_date_obj.year + (start_date_obj.month - 1 + months_to_add) // 12
+            month = (start_date_obj.month - 1 + months_to_add) % 12 + 1
+            day = min(start_date_obj.day, [31, 29 if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month-1])
+            end_date_obj = datetime(year, month, day).date()
+        
+        # Create loan record
+        loan = EmployeeLoan(
+            employee_id=employee_id,
+            loan_type=loan_type,
+            loan_amount=loan_amount,
+            emi_amount=emi_amount,
+            total_emis=total_emis,
+            remaining_emis=total_emis,
+            start_date=start_date_obj,
+            end_date=end_date_obj,
+            reason=reason,
+            status="active"
+        )
+        db.add(loan)
+        db.commit()
+        db.refresh(loan)
+        
+        return {
+            "status": "success",
+            "message": f"{'Loan' if loan_type == 'loan' else 'Advance'} created successfully",
+            "loan": {
+                "id": loan.id,
+                "employee_id": loan.employee_id,
+                "loan_type": loan.loan_type,
+                "loan_amount": float(loan.loan_amount),
+                "emi_amount": float(loan.emi_amount),
+                "total_emis": loan.total_emis,
+                "remaining_emis": loan.remaining_emis,
+                "start_date": loan.start_date.isoformat(),
+                "end_date": loan.end_date.isoformat() if loan.end_date else None,
+                "reason": loan.reason,
+                "status": loan.status
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating loan: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/loans/{loan_id}")
+def update_loan(
+    loan_id: str,
+    emi_amount: float = Body(default=None),
+    remaining_emis: int = Body(default=None),
+    status: str = Body(default=None),
+    db: Session = Depends(get_db),
+    current_user: AdminUser = Depends(get_current_user)
+):
+    """Update a loan record"""
+    try:
+        loan = db.query(EmployeeLoan).filter(EmployeeLoan.id == loan_id).first()
+        if not loan:
+            raise HTTPException(status_code=404, detail="Loan not found")
+        
+        if emi_amount is not None:
+            loan.emi_amount = emi_amount
+        if remaining_emis is not None:
+            loan.remaining_emis = remaining_emis
+        if status is not None:
+            if status not in ['active', 'completed', 'cancelled']:
+                raise HTTPException(status_code=400, detail="Invalid status")
+            loan.status = status
+            
+            # If completed, update end date
+            if status == 'completed':
+                from datetime import date
+                loan.end_date = date.today()
+        
+        db.commit()
+        db.refresh(loan)
+        
+        return {
+            "status": "success",
+            "message": "Loan updated successfully",
+            "loan": {
+                "id": loan.id,
+                "emi_amount": float(loan.emi_amount),
+                "remaining_emis": loan.remaining_emis,
+                "status": loan.status
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating loan: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/loans/{loan_id}")
+def delete_loan(
+    loan_id: str,
+    db: Session = Depends(get_db),
+    current_user: AdminUser = Depends(get_current_user)
+):
+    """Delete/cancel a loan record"""
+    try:
+        loan = db.query(EmployeeLoan).filter(EmployeeLoan.id == loan_id).first()
+        if not loan:
+            raise HTTPException(status_code=404, detail="Loan not found")
+        
+        # Mark as cancelled instead of deleting
+        loan.status = "cancelled"
+        db.commit()
+        
+        return {
+            "status": "success",
+            "message": "Loan cancelled successfully"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting loan: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/loans/outstanding-report")
+def get_outstanding_report(
+    db: Session = Depends(get_db),
+    current_user: AdminUser = Depends(get_current_user)
+):
+    """Get outstanding loan report - shows all active loans with outstanding amounts"""
+    try:
+        loans = db.query(EmployeeLoan).filter(
+            EmployeeLoan.status == "active"
+        ).all()
+        
+        result = []
+        for loan in loans:
+            employee = db.query(Employee).filter(Employee.id == loan.employee_id).first()
+            if employee:
+                outstanding_amount = float(loan.emi_amount) * loan.remaining_emis
+                
+                result.append({
+                    "loan_id": loan.id,
+                    "employee_id": loan.employee_id,
+                    "employee_name": f"{employee.first_name} {employee.last_name or ''}",
+                    "emp_code": employee.emp_code,
+                    "department": employee.department,
+                    "loan_type": loan.loan_type,
+                    "original_amount": float(loan.loan_amount),
+                    "emi_amount": float(loan.emi_amount),
+                    "total_emis": loan.total_emis,
+                    "remaining_emis": loan.remaining_emis,
+                    "outstanding_amount": round(outstanding_amount, 2),
+                    "start_date": loan.start_date.isoformat() if loan.start_date else None,
+                    "end_date": loan.end_date.isoformat() if loan.end_date else None
+                })
+        
+        # Sort by employee name
+        result.sort(key=lambda x: x["employee_name"])
+        
+        # Calculate totals
+        total_outstanding = sum(r["outstanding_amount"] for r in result)
+        total_employees = len(result)
+        
+        return {
+            "report_date": datetime.now().isoformat(),
+            "total_employees": total_employees,
+            "total_outstanding_amount": round(total_outstanding, 2),
+            "loans": result
+        }
+    except Exception as e:
+        logger.error(f"Error generating outstanding report: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/employees/{emp_id}/loans/outstanding")
+def get_employee_outstanding(
+    emp_id: str,
+    db: Session = Depends(get_db),
+    current_user: AdminUser = Depends(get_current_user)
+):
+    """Get outstanding loan amount for a specific employee"""
+    try:
+        employee = db.query(Employee).filter(Employee.id == emp_id).first()
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        
+        loans = db.query(EmployeeLoan).filter(
+            EmployeeLoan.employee_id == emp_id,
+            EmployeeLoan.status == "active"
+        ).all()
+        
+        result = []
+        total_outstanding = 0
+        
+        for loan in loans:
+            outstanding = float(loan.emi_amount) * loan.remaining_emis
+            total_outstanding += outstanding
+            
+            result.append({
+                "loan_id": loan.id,
+                "loan_type": loan.loan_type,
+                "loan_amount": float(loan.loan_amount),
+                "emi_amount": float(loan.emi_amount),
+                "remaining_emis": loan.remaining_emis,
+                "outstanding_amount": round(outstanding, 2)
+            })
+        
+        return {
+            "employee_id": emp_id,
+            "employee_name": f"{employee.first_name} {employee.last_name or ''}",
+            "total_outstanding": round(total_outstanding, 2),
+            "active_loans": result
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting employee outstanding: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/loans/{loan_id}/payments")
+def get_loan_payments(
+    loan_id: str,
+    db: Session = Depends(get_db),
+    current_user: AdminUser = Depends(get_current_user)
+):
+    """Get payment history for a loan"""
+    try:
+        loan = db.query(EmployeeLoan).filter(EmployeeLoan.id == loan_id).first()
+        if not loan:
+            raise HTTPException(status_code=404, detail="Loan not found")
+        
+        payments = db.query(LoanPayment).filter(
+            LoanPayment.loan_id == loan_id
+        ).order_by(LoanPayment.payment_date.desc()).all()
+        
+        return [{
+            "id": p.id,
+            "payment_date": p.payment_date.isoformat() if p.payment_date else None,
+            "amount": float(p.amount),
+            "month": p.month,
+            "year": p.year,
+            "status": p.status
+        } for p in payments]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching loan payments: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

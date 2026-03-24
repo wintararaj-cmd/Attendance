@@ -253,3 +253,76 @@ class EmployeePayrollRules(Base):
 Employee.salary_structure = relationship("SalaryStructure", uselist=False, back_populates="employee")
 Employee.payroll_rules = relationship("EmployeePayrollRules", uselist=False, back_populates="employee")
 
+
+class LoanType(str, enum.Enum):
+    LOAN = "loan"
+    ADVANCE = "advance"
+
+class LoanStatus(str, enum.Enum):
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+class PaymentStatus(str, enum.Enum):
+    PAID = "paid"
+    PENDING = "pending"
+    FAILED = "failed"
+
+
+class EmployeeLoan(Base):
+    """Employee Loan/Advance records with EMI deduction from salary"""
+    __tablename__ = "employee_loans"
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    employee_id = Column(String, ForeignKey("employees.id"), nullable=False)
+    
+    # Loan Type: 'loan' or 'advance'
+    loan_type = Column(String, nullable=False)  # 'loan' or 'advance'
+    
+    # Loan Details
+    loan_amount = Column(Numeric(12, 2), nullable=False)  # Total loan amount
+    emi_amount = Column(Numeric(12, 2), nullable=False)  # EMI amount per month
+    total_emis = Column(Integer, nullable=False, default=1)  # Total number of EMIs
+    remaining_emis = Column(Integer, nullable=False, default=1)  # Remaining EMIs
+    
+    # Dates
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=True)
+    
+    # Additional Info
+    reason = Column(Text, nullable=True)
+    status = Column(String, default="active")  # 'active', 'completed', 'cancelled'
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relationships
+    employee = relationship("Employee", back_populates="loans")
+    payments = relationship("LoanPayment", back_populates="loan", cascade="all, delete-orphan")
+
+
+class LoanPayment(Base):
+    """Loan EMI Payment Records"""
+    __tablename__ = "loan_payments"
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    loan_id = Column(String, ForeignKey("employee_loans.id"), nullable=False)
+    employee_id = Column(String, ForeignKey("employees.id"), nullable=False)
+    
+    # Payment Details
+    payment_date = Column(Date, nullable=False)
+    amount = Column(Numeric(12, 2), nullable=False)
+    month = Column(Integer, nullable=False)  # 1-12
+    year = Column(Integer, nullable=False)
+    status = Column(String, default="paid")  # 'paid', 'pending', 'failed'
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Relationships
+    loan = relationship("EmployeeLoan", back_populates="payments")
+    employee = relationship("Employee")
+
+
+# Update Employee relationship for loans
+Employee.loans = relationship("EmployeeLoan", back_populates="employee")
+

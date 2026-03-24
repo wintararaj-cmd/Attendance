@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, UserPlus, Banknote, FileText, Building2, LogOut, Fingerprint } from 'lucide-react';
+import { LayoutDashboard, Users, UserPlus, Banknote, FileText, Building2, LogOut, Fingerprint, Wallet } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 
 const NAV_ITEMS: Array<{ section: string; items: Array<{ to: string; icon: any; label: string; exact?: boolean }> }> = [
@@ -20,6 +20,7 @@ const NAV_ITEMS: Array<{ section: string; items: Array<{ to: string; icon: any; 
     section: 'Reports',
     items: [
       { to: '/payroll', icon: Banknote, label: 'Payroll' },
+      { to: '/loans', icon: Wallet, label: 'Loans' },
       { to: '/logs', icon: FileText, label: 'Attendance Logs' },
     ]
   }
