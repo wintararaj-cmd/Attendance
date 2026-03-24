@@ -75,7 +75,7 @@ export default function LoanManagement() {
     const [employeeSearch, setEmployeeSearch] = useState('');
     const [showEmployeeDropdown, setShowEmployeeDropdown] = useState(false);
 
-    const API_URL = (import.meta.env.VITE_API_BASE_URL || 'https://api.t3sol.in') + '/api/v1';
+
 
     useEffect(() => {
         fetchLoans();
@@ -87,7 +87,7 @@ export default function LoanManagement() {
             setLoading(true);
             const token = localStorage.getItem('admin_token');
             const params = statusFilter ? `?status=${statusFilter}` : '';
-            const response = await axios.get(`${API_URL}/loans${params}`, {
+            const response = await axios.get(`/api/v1/loans${params}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setLoans(response.data);
@@ -102,7 +102,7 @@ export default function LoanManagement() {
     const fetchEmployees = async () => {
         try {
             const token = localStorage.getItem('admin_token');
-            const response = await axios.get(`${API_URL}/employees`, {
+            const response = await axios.get(`/api/v1/employees`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setEmployees(response.data);
@@ -115,7 +115,7 @@ export default function LoanManagement() {
         try {
             setLoading(true);
             const token = localStorage.getItem('admin_token');
-            const response = await axios.get(`${API_URL}/loans/outstanding-report`, {
+            const response = await axios.get(`/api/v1/loans/outstanding-report`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setOutstandingReport(response.data);
@@ -132,7 +132,7 @@ export default function LoanManagement() {
         e.preventDefault();
         try {
             const token = localStorage.getItem('admin_token');
-            await axios.post(`${API_URL}/loans`, formData, {
+            await axios.post(`/api/v1/loans`, formData, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setSuccess('Loan/Advance created successfully');
@@ -158,7 +158,7 @@ export default function LoanManagement() {
         if (!confirm('Are you sure you want to cancel this loan?')) return;
         try {
             const token = localStorage.getItem('admin_token');
-            await axios.delete(`${API_URL}/loans/${loanId}`, {
+            await axios.delete(`/api/v1/loans/${loanId}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setSuccess('Loan cancelled successfully');
