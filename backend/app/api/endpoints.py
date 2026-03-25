@@ -3115,7 +3115,7 @@ def get_outstanding_report(
         total_employees = len(result)
         
         return {
-            "report_date": datetime.now().isoformat(),
+            "report_date": datetime.datetime.now().isoformat(),
             "total_employees": total_employees,
             "total_outstanding_amount": round(total_outstanding, 2),
             "loans": result
