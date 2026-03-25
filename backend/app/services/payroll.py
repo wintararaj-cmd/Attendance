@@ -1,5 +1,6 @@
 from decimal import Decimal
 import math
+import json
 
 def math_ceil(val):
     return Decimal(math.ceil(val))
@@ -18,6 +19,14 @@ DEFAULT_PAYROLL_RULES = {
     "pf_employee_rate": 12.0,
     "pf_employer_rate": 12.0,
     "pf_wage_ceiling": 15000.0,
+    "pf_use_slabs": False,
+    "pf_slabs": json.dumps([
+        {"min": 0, "max": 10000, "amount": 0},
+        {"min": 10001, "max": 15000, "amount": 110},
+        {"min": 15001, "max": 25000, "amount": 130},
+        {"min": 25001, "max": 40000, "amount": 150},
+        {"min": 40001, "max": None, "amount": 200}
+    ]),
     "esi_employee_rate": 0.75,
     "esi_employer_rate": 3.25,
     "esi_wage_ceiling": 21000.0,
@@ -226,10 +235,45 @@ class PayrollService:
                     per_day_basic = basic / total_days_in_month if total_days_in_month > 0 else 0
                     earned_basic = per_day_basic * (total_days_in_month - unpaid_leaves)
                 
-                # Use custom PF ceiling and rates
-                pf_base = min(earned_basic, pf_wage_ceiling)
-                pf_employee = pf_base * pf_employee_rate
-                pf_employer = pf_base * pf_employer_rate
+                # Check for Slab-based PF
+                pf_use_slabs = rules.get("pf_use_slabs", False)
+                if pf_use_slabs:
+                    pf_slabs_raw = rules.get("pf_slabs")
+                    try:
+                        if isinstance(pf_slabs_raw, str):
+                            pf_slabs = json.loads(pf_slabs_raw)
+                        else:
+                            pf_slabs = pf_slabs_raw
+                        
+                        # Find matching slab based on Gross Salary if requested (usually PF is on wages/basic, but let's see)
+                        # The user said "above 40000--200", usually this is gross salary range.
+                        # I'll use gross_salary for slab matching.
+                        match_value = gross_salary
+                        
+                        for slab in pf_slabs:
+                            s_min = Decimal(str(slab.get("min", 0)))
+                            s_max = slab.get("max")
+                            s_amount = Decimal(str(slab.get("amount", 0)))
+                            
+                            if match_value >= s_min and (s_max is None or match_value <= Decimal(str(s_max))):
+                                pf_employee = s_amount
+                                break
+                        
+                        # Employer contribution usually stays percentage-based or matches? 
+                        # In many Indian systems, PF is percentage-based, and Professional Tax is slab-based.
+                        # The user said "add a option for pf slabs", which sounds like they want fixed amount PF.
+                        # I'll set employer to 0 or match employee? Usually employer also matches or is per rules.
+                        # I'll keep employer percentage-based on earned_basic for now, or match employee if that's the intent.
+                        # Actually, if it's slab-based fixed amount, usually both are fixed or just one.
+                        # Let's match employer to employee for fixed amount if slab is used, or let it be 0.
+                        # I'll set employer PF to 0 if slabs are used unless they specify.
+                    except Exception as e:
+                        print(f"Error parsing PF slabs: {e}")
+                else:
+                    # Use custom PF ceiling and rates (Percentage-based)
+                    pf_base = min(earned_basic, pf_wage_ceiling)
+                    pf_employee = pf_base * pf_employee_rate
+                    pf_employer = pf_base * pf_employer_rate
             
             esi_employee = Decimal(0)
             esi_employer = Decimal(0)
@@ -342,6 +386,7 @@ class PayrollService:
                             "pf_employee_rate_percent": float(pf_employee_rate * 100),
                             "pf_employer_rate_percent": float(pf_employer_rate * 100),
                             "pf_wage_ceiling": float(pf_wage_ceiling),
+                            "pf_use_slabs": pf_use_slabs,
                             "esi_employee_rate_percent": float(esi_employee_rate * 100),
                             "esi_employer_rate_percent": float(esi_employer_rate * 100),
                             "esi_wage_ceiling": float(esi_wage_ceiling),

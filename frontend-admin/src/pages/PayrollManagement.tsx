@@ -130,6 +130,9 @@ interface PayrollRules {
     // Professional Tax Rules
     pt_threshold: number;
     pt_amount: number;
+    // PF Slabs
+    pf_use_slabs?: boolean;
+    pf_slabs?: string | any[];
     // Welfare Fund
     welfare_rate: number;
     // Notes
@@ -212,6 +215,14 @@ export default function PayrollManagement() {
         ot_holiday_multiplier: 2.5,
         pt_threshold: 10000,
         pt_amount: 200,
+        pf_use_slabs: false,
+        pf_slabs: JSON.stringify([
+            { min: 0, max: 10000, amount: 0 },
+            { min: 10001, max: 15000, amount: 110 },
+            { min: 15001, max: 25000, amount: 130 },
+            { min: 25001, max: 40000, amount: 150 },
+            { min: 40001, max: null, amount: 200 }
+        ]),
         welfare_rate: 3.0,
         notes: ''
     });
@@ -1529,13 +1540,14 @@ export default function PayrollManagement() {
                                         <DollarSign size={18} />
                                         Provident Fund (PF) Rules
                                     </h4>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                                         <div>
                                             <label style={labelStyle}>Employee Rate (%)</label>
                                             <input
                                                 type="number"
                                                 className="input"
                                                 step="0.1"
+                                                disabled={rulesForm.pf_use_slabs}
                                                 value={rulesForm.pf_employee_rate}
                                                 onChange={e => setRulesForm({ ...rulesForm, pf_employee_rate: Number(e.target.value) })}
                                                 placeholder="12"
@@ -1547,6 +1559,7 @@ export default function PayrollManagement() {
                                                 type="number"
                                                 className="input"
                                                 step="0.1"
+                                                disabled={rulesForm.pf_use_slabs}
                                                 value={rulesForm.pf_employer_rate}
                                                 onChange={e => setRulesForm({ ...rulesForm, pf_employer_rate: Number(e.target.value) })}
                                                 placeholder="12"
@@ -1557,11 +1570,99 @@ export default function PayrollManagement() {
                                             <input
                                                 type="number"
                                                 className="input"
+                                                disabled={rulesForm.pf_use_slabs}
                                                 value={rulesForm.pf_wage_ceiling}
                                                 onChange={e => setRulesForm({ ...rulesForm, pf_wage_ceiling: Number(e.target.value) })}
                                                 placeholder="15000"
                                             />
                                         </div>
+                                    </div>
+
+                                    {/* PF Slabs Option */}
+                                    <div style={{ padding: '1rem', background: '#f0f4ff', borderRadius: '8px', border: '1px solid #dbeafe' }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', marginBottom: rulesForm.pf_use_slabs ? '1rem' : '0' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={rulesForm.pf_use_slabs}
+                                                onChange={e => setRulesForm({ ...rulesForm, pf_use_slabs: e.target.checked })}
+                                                style={{ width: '18px', height: '18px' }}
+                                            />
+                                            <div>
+                                                <span style={{ fontWeight: 600, color: '#1e40af', display: 'block' }}>Use Slab-based Fixed PF</span>
+                                                <span style={{ fontSize: '0.75rem', color: '#1e3a8a' }}>Configure PF deduction based on salary ranges instead of percentage.</span>
+                                            </div>
+                                        </label>
+
+                                        {rulesForm.pf_use_slabs && (
+                                            <div style={{ display: 'grid', gap: '0.5rem' }}>
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '0.5rem', fontWeight: 600, fontSize: '0.8rem', color: '#64748b', padding: '0 0.5rem' }}>
+                                                    <span>Min Salary</span>
+                                                    <span>Max Salary</span>
+                                                    <span>Deduction (₹)</span>
+                                                    <span></span>
+                                                </div>
+                                                {(typeof rulesForm.pf_slabs === 'string' ? JSON.parse(rulesForm.pf_slabs) : rulesForm.pf_slabs || []).map((slab: any, idx: number) => (
+                                                    <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '0.5rem', alignItems: 'center' }}>
+                                                        <input
+                                                            type="number"
+                                                            className="input"
+                                                            style={{ padding: '0.4rem' }}
+                                                            value={slab.min}
+                                                            onChange={e => {
+                                                                const slabs = [...(typeof rulesForm.pf_slabs === 'string' ? JSON.parse(rulesForm.pf_slabs) : rulesForm.pf_slabs)];
+                                                                slabs[idx].min = Number(e.target.value);
+                                                                setRulesForm({ ...rulesForm, pf_slabs: JSON.stringify(slabs) });
+                                                            }}
+                                                        />
+                                                        <input
+                                                            type="number"
+                                                            className="input"
+                                                            style={{ padding: '0.4rem' }}
+                                                            value={slab.max === null ? '' : slab.max}
+                                                            placeholder="And above"
+                                                            onChange={e => {
+                                                                const slabs = [...(typeof rulesForm.pf_slabs === 'string' ? JSON.parse(rulesForm.pf_slabs) : rulesForm.pf_slabs)];
+                                                                slabs[idx].max = e.target.value === '' ? null : Number(e.target.value);
+                                                                setRulesForm({ ...rulesForm, pf_slabs: JSON.stringify(slabs) });
+                                                            }}
+                                                        />
+                                                        <input
+                                                            type="number"
+                                                            className="input"
+                                                            style={{ padding: '0.4rem' }}
+                                                            value={slab.amount}
+                                                            onChange={e => {
+                                                                const slabs = [...(typeof rulesForm.pf_slabs === 'string' ? JSON.parse(rulesForm.pf_slabs) : rulesForm.pf_slabs)];
+                                                                slabs[idx].amount = Number(e.target.value);
+                                                                setRulesForm({ ...rulesForm, pf_slabs: JSON.stringify(slabs) });
+                                                            }}
+                                                        />
+                                                        <button 
+                                                            className="btn btn-ghost" 
+                                                            style={{ padding: '0.25rem', color: '#ef4444' }}
+                                                            onClick={() => {
+                                                                const slabs = [...(typeof rulesForm.pf_slabs === 'string' ? JSON.parse(rulesForm.pf_slabs) : rulesForm.pf_slabs)];
+                                                                slabs.splice(idx, 1);
+                                                                setRulesForm({ ...rulesForm, pf_slabs: JSON.stringify(slabs) });
+                                                            }}
+                                                        >
+                                                            <X size={14} />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                                <button 
+                                                    className="btn btn-ghost" 
+                                                    style={{ fontSize: '0.8rem', color: '#2563eb', alignSelf: 'start', marginTop: '0.5rem' }}
+                                                    onClick={() => {
+                                                        const slabs = [...(typeof rulesForm.pf_slabs === 'string' ? JSON.parse(rulesForm.pf_slabs) : rulesForm.pf_slabs)];
+                                                        slabs.push({ min: 0, max: null, amount: 0 });
+                                                        setRulesForm({ ...rulesForm, pf_slabs: JSON.stringify(slabs) });
+                                                    }}
+                                                >
+                                                    + Add Slab
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 

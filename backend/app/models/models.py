@@ -226,6 +226,8 @@ class EmployeePayrollRules(Base):
     pf_employee_rate = Column(Numeric(5, 2), default=12.0)  # 12% employee contribution
     pf_employer_rate = Column(Numeric(5, 2), default=12.0)  # 12% employer contribution
     pf_wage_ceiling = Column(Numeric(12, 2), default=15000.0)  # Max wage for PF calculation
+    pf_use_slabs = Column(Boolean, default=False)  # Whether to use fixed slabs instead of percentage
+    pf_slabs = Column(Text, nullable=True)  # JSON string of PF slabs
     
     # ESI (Employee State Insurance) Rules
     esi_employee_rate = Column(Numeric(5, 2), default=0.75)  # 0.75% employee contribution

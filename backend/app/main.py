@@ -24,10 +24,14 @@ def init_data():
         from .models.models import Company
         default_company = db.query(Company).filter(Company.id == "default").first()
         if not default_company:
-            default_company = Company(id="default", name="Default Company")
-            db.add(default_company)
-            db.commit()
-            print("✅ Default company created.")
+            try:
+                default_company = Company(id="default", name="Default Company")
+                db.add(default_company)
+                db.commit()
+                print("✅ Default company created.")
+            except Exception:
+                db.rollback()
+                print("ℹ️ Default company might have been created by another process.")
         
         # Create default admin if not exists
         username = "admin"
@@ -41,7 +45,12 @@ def init_data():
                 db.commit()
                 print("✅ Default admin created.")
             except Exception as e:
-                print(f"❌ Failed to create admin: {e}")
+                db.rollback() # Important to rollback to clear the session
+                # If it's a unique violation, it just means someone else created it
+                if "unique constraint" in str(e).lower() or "Duplicate" in str(e):
+                    print(f"ℹ️ Admin user '{username}' already exists (race condition handled).")
+                else:
+                    print(f"❌ Failed to create admin: {e}")
     finally:
         db.close()
 
