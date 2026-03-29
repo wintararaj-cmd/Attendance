@@ -18,6 +18,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from ..services.face_recognition import face_service
 from ..services.payroll import payroll_service
 from ..services.auth import auth_service, SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
+from ..services.biometric_import import biometric_service
 from ..core.database import get_db, engine
 from ..models import models
 from ..models.models import Employee, AttendanceLog, SalaryStructure, AdminUser, Department, Payroll, PayrollStatus, EmployeeLoan, LoanPayment
@@ -603,6 +604,48 @@ async def mark_checkout(
             os.remove(temp_file)
 
 
+@router.post("/attendance/import-biometric")
+async def import_biometric_attendance(
+    file_path: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db)
+):
+    """Import attendance from biometric EXCEL file (Uploaded or local path)"""
+    import tempfile
+    import shutil
+    
+    if file:
+        # Handle Uploaded File
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as tmp:
+            shutil.copyfileobj(file.file, tmp)
+            final_path = tmp.name
+        
+        try:
+            result = biometric_service.import_from_excel(final_path, db)
+            return result
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            if os.path.exists(final_path):
+                os.remove(final_path)
+    else:
+        # Fallback to Local Path
+        final_path = file_path or "E:/Project/AttendanceSys/rpt_attn_dtls_emp.xls"
+        
+        if not os.path.exists(final_path):
+            raise HTTPException(status_code=404, detail=f"File not found: {final_path}")
+            
+        try:
+            result = biometric_service.import_from_excel(final_path, db)
+            return result
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/employees")
 def get_employees(
     department: Optional[str] = None,
@@ -912,7 +955,7 @@ def generate_payroll(
                     elif status == 'half_day':
                         real_present += 0.5
                         paid_days += 0.5
-                    elif status in ['leave_paid', 'holiday', 'weekend']: 
+                    elif status in ['leave_paid', 'holiday', 'weekly_off', 'weekend']: 
                         # Explicit paid statuses if logged
                         paid_days += 1.0 
                     # If absent/unpaid_leave, add 0
@@ -1557,21 +1600,19 @@ def get_attendance_logs(
     end_date: Optional[str] = None,
     employee_id: Optional[str] = None,
     search: Optional[str] = None,
-    db: Session = Depends(get_db),
-    # current_user: AdminUser = Depends(get_current_user)
+    page: int = 1,
+    page_size: int = 50,
+    db: Session = Depends(get_db)
 ):
-    """Get attendance logs with optional filters"""
+    """Get attendance logs with optional filters and pagination"""
     from sqlalchemy import desc
     
     query = db.query(AttendanceLog).join(Employee)
-    
-    logger.info(f"FILTER REQUEST - Search: '{search}', Start: {start_date}, End: {end_date}, EmpID: {employee_id}")
     
     if employee_id:
         query = query.filter(AttendanceLog.employee_id == employee_id)
     if search:
         search_lower = search.lower()
-        logger.info(f"Applying search filter: {search_lower}")
         from sqlalchemy import or_
         query = query.filter(
             or_(
@@ -1585,7 +1626,12 @@ def get_attendance_logs(
     if end_date:
         query = query.filter(AttendanceLog.date <= end_date)
     
-    logs = query.order_by(desc(AttendanceLog.date), desc(AttendanceLog.check_in)).limit(50).all()
+    # Get total count for pagination
+    total_records = query.count()
+    
+    # Apply pagination
+    offset = (page - 1) * page_size
+    logs = query.order_by(desc(AttendanceLog.date), desc(AttendanceLog.check_in)).offset(offset).limit(page_size).all()
     
     # IST timezone for display
     IST = timezone(timedelta(hours=5, minutes=30))
@@ -1615,6 +1661,7 @@ def get_attendance_logs(
             "date": log.date.isoformat(),
             "employee_name": f"{emp.first_name} {emp.last_name or ''}".strip(),
             "emp_code": emp.emp_code,
+            "department": emp.department or "Unassigned",
             "check_in": check_in_ist.strftime("%I:%M %p") if check_in_ist else None,
             "check_out": check_out_ist.strftime("%I:%M %p") if check_out_ist else None,
             "status": log.status,
@@ -1625,7 +1672,13 @@ def get_attendance_logs(
             "ot_holiday_hours": float(log.ot_holiday_hours) if log.ot_holiday_hours else 0
         })
     
-    return {"logs": result}
+    return {
+        "logs": result,
+        "total": total_records,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": (total_records + page_size - 1) // page_size
+    }
 
 @router.put("/attendance/logs/{log_id}")
 def update_attendance_log(

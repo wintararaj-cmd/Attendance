@@ -21,6 +21,7 @@ const NAV_ITEMS: Array<{ section: string; items: Array<{ to: string; icon: any; 
     items: [
       { to: '/payroll', icon: Banknote, label: 'Payroll' },
       { to: '/loans', icon: Wallet, label: 'Loans' },
+      { to: '/biometric-import', icon: Fingerprint, label: 'Attendance taken from Biometric Device' },
       { to: '/logs', icon: FileText, label: 'Attendance Logs' },
     ]
   }

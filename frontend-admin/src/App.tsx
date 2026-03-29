@@ -8,6 +8,7 @@ import PayrollManagement from './pages/PayrollManagement';
 import AttendanceLogs from './pages/AttendanceLogs';
 import DepartmentManagement from './pages/DepartmentManagement';
 import LoanManagement from './pages/LoanManagement';
+import BiometricImport from './pages/BiometricImport';
 import Login from './pages/Login';
 import axios from 'axios';
 
@@ -72,6 +73,7 @@ function App() {
             <Route path="/departments" element={<DepartmentManagement />} />
             <Route path="/payroll" element={<PayrollManagement />} />
             <Route path="/loans" element={<LoanManagement />} />
+            <Route path="/biometric-import" element={<BiometricImport />} />
             <Route path="/logs" element={<AttendanceLogs />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
