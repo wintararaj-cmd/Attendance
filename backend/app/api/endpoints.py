@@ -1602,6 +1602,7 @@ def get_attendance_logs(
     search: Optional[str] = None,
     page: int = 1,
     page_size: int = 50,
+    sort: str = 'date_desc',
     db: Session = Depends(get_db)
 ):
     """Get attendance logs with optional filters and pagination"""
@@ -1631,7 +1632,13 @@ def get_attendance_logs(
     
     # Apply pagination
     offset = (page - 1) * page_size
-    logs = query.order_by(desc(AttendanceLog.date), desc(AttendanceLog.check_in)).offset(offset).limit(page_size).all()
+    # Dynamic sorting
+    if sort == 'emp_asc':
+        query = query.order_by(Employee.first_name.asc(), desc(AttendanceLog.date))
+    else:
+        query = query.order_by(desc(AttendanceLog.date), desc(AttendanceLog.check_in))
+        
+    logs = query.offset(offset).limit(page_size).all()
     
     # IST timezone for display
     IST = timezone(timedelta(hours=5, minutes=30))

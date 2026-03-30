@@ -32,7 +32,7 @@ const STATUS_BADGE: Record<string, string> = {
 export default function AttendanceLogs() {
     const [logs, setLogs] = useState<AttendanceLog[]>([]);
     const [page, setPage] = useState(1);
-    const [pageSize] = useState(50);
+    const [pageSize, setPageSize] = useState(50);
     const [totalRecords, setTotalRecords] = useState(0);
     const [totalPages, setTotalPages] = useState(0);
     const [searchTerm, setSearchTerm] = useState('');
@@ -56,7 +56,13 @@ export default function AttendanceLogs() {
     const [viewMode, setViewMode] = useState<ViewMode>('all');
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-    useEffect(() => { fetchLogs(1); }, []);
+    useEffect(() => { fetchLogs(page); }, [page, viewMode, pageSize]);
+
+    const handleViewModeChange = (newMode: ViewMode) => {
+        setViewMode(newMode);
+        setPage(1);
+        setExpandedGroups(new Set());
+    };
 
     const showSuccess = (msg: string) => {
         setSuccessMsg(msg);
@@ -69,7 +75,8 @@ export default function AttendanceLogs() {
             setError(null);
             const params: Record<string, any> = {
                 page: pageToFetch,
-                page_size: pageSize
+                page_size: pageSize,
+                sort: viewMode === 'by_employee' ? 'emp_asc' : 'date_desc'
             };
             if (searchTerm) params.search = searchTerm;
             if (startDate) params.start_date = startDate;
@@ -481,7 +488,21 @@ export default function AttendanceLogs() {
                             </strong> of <strong style={{ color: 'var(--text-main)' }}>{totalRecords}</strong> records
                             {hasFilters && ' (filtered)'}
                         </div>
-                        <div style={{ display: 'flex', gap: '0.25rem' }}>
+                        <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                            <div style={{ marginRight: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Page Size:</span>
+                                <select 
+                                    className="input input-sm" 
+                                    style={{ width: '80px', height: '28px', padding: '0 0.5rem' }}
+                                    value={pageSize}
+                                    onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+                                >
+                                    <option value={50}>50</option>
+                                    <option value={100}>100</option>
+                                    <option value={200}>200</option>
+                                    <option value={500}>500</option>
+                                </select>
+                            </div>
                             {([
                                 { key: 'all' as ViewMode, label: 'All Records' },
                                 { key: 'by_employee' as ViewMode, label: 'Group by Employee' },
@@ -490,7 +511,7 @@ export default function AttendanceLogs() {
                                 <button
                                     key={opt.key}
                                     className={`btn btn-sm ${viewMode === opt.key ? 'btn-primary' : 'btn-ghost'}`}
-                                    onClick={() => { setViewMode(opt.key); setExpandedGroups(new Set()); }}
+                                    onClick={() => handleViewModeChange(opt.key)}
                                 >
                                     {opt.label}
                                 </button>
