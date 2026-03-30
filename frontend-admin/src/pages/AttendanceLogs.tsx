@@ -32,7 +32,7 @@ const STATUS_BADGE: Record<string, string> = {
 export default function AttendanceLogs() {
     const [logs, setLogs] = useState<AttendanceLog[]>([]);
     const [page, setPage] = useState(1);
-    const [pageSize, setPageSize] = useState(50);
+    const [pageSize] = useState(50);
     const [totalRecords, setTotalRecords] = useState(0);
     const [totalPages, setTotalPages] = useState(0);
     const [searchTerm, setSearchTerm] = useState('');
