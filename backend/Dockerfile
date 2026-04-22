@@ -50,8 +50,8 @@ RUN echo '#!/bin/bash\n\
     echo "[4/5] Adding new allowance columns (Casting, TTB, Plating)..."\n\
     python migrate_add_allowances.py || echo "[WARN] Allowance columns migration had warnings..."\n\
     echo ""\n\
-    echo "[4.5/5] Seeding demo data..."\n\
-    python reset_and_seed.py || echo "[WARN] Seeding had warnings..."\n\
+#    echo "[4.5/5] Seeding demo data..."\n\
+#    python reset_and_seed.py || echo "[WARN] Seeding had warnings..."\n\
     echo ""\n\
     echo "[5/5] Running loan/advance migration..."\n\
     python run_loan_migration.py || echo "[WARN] Loan migration had warnings..."\n\
