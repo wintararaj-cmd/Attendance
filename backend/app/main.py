@@ -59,11 +59,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://attn.t3sol.in",
+        "https://api.t3sol.in",
         "https://t3sol.in",
         "https://www.t3sol.in",
         "https://terminal.t3sol.in",
-        "https://api.t3sol.in",
-        "https://backend.140.245.242.116.sslip.io",
         "http://localhost:3000",
         "http://localhost:5173",
         "http://localhost:8000",
