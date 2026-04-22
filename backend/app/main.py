@@ -58,6 +58,7 @@ def init_data():
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "https://attn.t3sol.in",
         "https://t3sol.in",
         "https://www.t3sol.in",
         "https://terminal.t3sol.in",
